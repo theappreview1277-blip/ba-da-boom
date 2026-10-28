@@ -5,6 +5,7 @@
 // Each launch uses its own temporary profile, so tests never touch the user's
 // autosave or samples and still run while the user has the app open.
 
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,17 +18,85 @@ export const usingInstalledApp = () => !!process.env.ELECTRON_EXE;
 
 export const newProfile = () => mkdtempSync(join(tmpdir(), 'bdb-test-'));
 
+let lastApp = null;
+/** The last lines the most recently launched app printed. */
+export const lastAppLog = () => lastApp?.__log?.slice(-15) ?? [];
+
+/** Processes closing left behind, per profile; checked after every suite. */
+export const leftovers = [];
+const launched = new Set();
+
+/** Pids of any app processes (main, renderer, GPU, ...) still using this profile. */
+export function processesFor(profile) {
+  try {
+    if (process.platform === 'win32') {
+      const ps = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${profile.replace(/'/g, "''")}*' } | ForEach-Object { $_.ProcessId }`;
+      return execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }).split(/\s+/).filter(Boolean).map(Number);
+    }
+    return execFileSync('pgrep', ['-f', profile], { encoding: 'utf8' }).split(/\s+/).filter(Boolean).map(Number);
+  } catch {
+    return [];
+  }
+}
+
+function killAll(pids) {
+  for (const pid of pids) {
+    try {
+      if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+      else process.kill(pid, 'SIGKILL');
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+/** After the main process exits, every other app process must be gone within 5 s. */
+async function expectNoLeftovers(profile) {
+  let pids = [];
+  for (let i = 0; i < 25; i++) {
+    pids = processesFor(profile);
+    if (!pids.length) return;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  leftovers.push({ profile, pids });
+  killAll(pids);
+}
+
+/** Simulate a crash: the whole app dies at once (like End task in Task Manager). */
+export async function crashApp(app) {
+  const exited = new Promise((r) => app.process().once('exit', r));
+  if (process.platform === 'win32') killAll([app.process().pid]);
+  else app.process().kill('SIGKILL');
+  await exited;
+  await new Promise((r) => setTimeout(r, 1000));
+  killAll(processesFor(app.__profile));
+}
+
 export async function launchApp(profile = newProfile()) {
   const exe = process.env.ELECTRON_EXE;
   const args = exe ? [] : ['.'];
   if (process.platform === 'linux') args.push('--no-sandbox');
   args.push(`--user-data-dir=${profile}`);
   const app = await _electron.launch({ executablePath: exe || require('electron'), args });
+  app.__profile = profile;
+  launched.add(profile);
+  // Keep the app's own output, so a failure can show what the app said.
+  const log = [];
+  const keep = (d) => log.push(...String(d).split(/\r?\n/).filter(Boolean)) && log.splice(0, Math.max(0, log.length - 200));
+  app.process().stdout?.on('data', keep);
+  app.process().stderr?.on('data', keep);
+  app.__log = log;
+  lastApp = app;
+  await app.evaluate(({ app: a }) => {
+    a.on('render-process-gone', (_e, _wc, d) => console.log(`[test] renderer gone: ${d.reason} (exit ${d.exitCode})`));
+    a.on('child-process-gone', (_e, d) => console.log(`[test] child process gone: ${d.type} ${d.reason} (exit ${d.exitCode})`));
+  });
   const win = await app.firstWindow();
   const pageErrors = [];
   win.on('pageerror', (e) => pageErrors.push(e.message));
   await win.waitForFunction(
-    () => window.__engine && ['factory:kick', 'factory:metro-hi'].every((id) => window.__engine.sampleStatus(id) === 'ok'),
+    // Every sample has finished loading (ok or missing), not just the first few.
+    () => window.__engine?.['status']?.size >= 18 && [...window.__engine['status'].values()].every((st) => st !== 'loading'),
     null,
     { timeout: 30000 },
   );
@@ -44,6 +113,7 @@ export async function closeApp(app, win) {
   // The window closes during the click, which Playwright reports as an error.
   if (asked) await win.click('.modal button:has-text("Don\'t save")').catch(() => {});
   await closed;
+  await expectNoLeftovers(app.__profile);
   return asked;
 }
 
@@ -104,8 +174,29 @@ export async function runStandalone(importMetaUrl, name, run) {
   try {
     await run(s);
   } catch (e) {
-    s.check('test ran to completion', false, String(e?.stack ?? e).split('\n').slice(0, 3).join(' | '));
+    failedRun(s, e);
   }
+  checkLeftovers(s);
   console.log(s.passed ? `${name}: all ${s.checks.length} checks passed` : `${name}: FAILED`);
   process.exit(s.passed ? 0 : 1);
+}
+
+export function failedRun(s, e) {
+  s.check('test ran to completion', false, String(e?.stack ?? e).split('\n').slice(0, 3).join(' | '));
+  const log = lastAppLog();
+  if (log.length) console.log(`    last output from the app:\n      ${log.join('\n      ')}`);
+}
+
+export function checkLeftovers(s) {
+  // Anything still running for a profile this suite used (e.g. after a failure) counts too.
+  for (const profile of launched) {
+    const pids = processesFor(profile);
+    if (pids.length) {
+      leftovers.push({ profile, pids });
+      killAll(pids);
+    }
+  }
+  launched.clear();
+  const found = leftovers.splice(0);
+  s.check('closing the app leaves no processes behind', found.length === 0, found.length ? found.map((f) => `${f.pids.length} left (${f.pids.join(' ')})`).join('; ') : 'none');
 }

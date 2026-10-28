@@ -5,7 +5,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { suite, usingInstalledApp } from './lib.mjs';
+import { checkLeftovers, failedRun, suite, usingInstalledApp } from './lib.mjs';
 
 const lines = [];
 const origLog = console.log;
@@ -51,8 +51,9 @@ for (const [file, name] of suites) {
     const { run } = await import(file);
     await run(s);
   } catch (e) {
-    s.check('test ran to completion', false, String(e?.stack ?? e).split('\n').slice(0, 3).join(' | '));
+    failedRun(s, e);
   }
+  checkLeftovers(s);
   s.note('seconds', Math.round((Date.now() - t0) / 1000));
   results.push(s);
 }

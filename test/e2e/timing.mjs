@@ -12,9 +12,10 @@ export async function run(t) {
   const { app, win, pageErrors } = await launchApp();
   try {
     t.note('system', await systemInfo(app));
-    const r = await win.evaluate(async ([LONG, EDITS]) => {
+    const r = {};
+    // Helpers live in the page; each part runs in its own evaluate so a failure points at one part.
+    await win.evaluate(() => {
       const { renderPattern, encodeWav24, parseProject, serializeProject } = window.__bdb;
-      const engine = window.__engine;
       const base = parseProject(serializeProject(JSON.parse(JSON.stringify(window.__engine.project))));
       const clickProject = (bpm, seed = 1, prob = 1) => {
         const p = structuredClone(base);
@@ -42,8 +43,12 @@ export async function run(t) {
         }
         return out;
       };
+      window.__timing = { renderPattern, encodeWav24, clickProject, onsets };
+    });
+    r.export = await win.evaluate(async () => {
+      const { renderPattern, encodeWav24, clickProject, onsets } = window.__timing;
+      const engine = window.__engine;
       const report = {};
-
       // 1. offline export timing
       {
         const bpm = 137;
@@ -57,6 +62,15 @@ export async function run(t) {
         report.exportFirst = on.slice(0, 4).map((t) => +(t * 1000).toFixed(3));
         report.export = { expected: 64, found: on.length, maxErrorSamples: Math.max(...errs), sampleRate: sr, events: res.events, seconds: res.buffer.duration };
       }
+      return report.export;
+    });
+    const e = r.export;
+    t.check('export: all 64 clicks found (4 bars at 137 BPM)', e.found === e.expected, `${e.found}/${e.expected}`);
+    t.check('export: every click within 1 sample of the grid', e.maxErrorSamples <= 1, `max ${e.maxErrorSamples.toFixed(2)} samples @ ${e.sampleRate} Hz`);
+    r.probability = await win.evaluate(async () => {
+      const { renderPattern, encodeWav24, clickProject, onsets } = window.__timing;
+      const engine = window.__engine;
+      const report = {};
       // 2. reproducibility
       {
         const p = clickProject(120, 7, 0.5);
@@ -68,6 +82,16 @@ export async function run(t) {
         const hits = async (proj) => onsets((await renderPattern(proj, { patternId: proj.patterns[0].id, bars: 4 })).buffer.getChannelData(0), 44100).length;
         report.probability = { sameSeedIdentical: same(a, b), otherSeedDiffers: !same(a, c), hitsSeed7: await hits(p), hitsSeed8: await hits(q), of: 64 };
       }
+      return report.probability;
+    });
+    const p = r.probability;
+    t.check('probability: same seed gives an identical WAV', p.sameSeedIdentical);
+    t.check('probability: a different seed gives a different WAV', p.otherSeedDiffers);
+    t.check('probability 50%: roughly half the hits play', [p.hitsSeed7, p.hitsSeed8].every((h) => h >= 16 && h <= 48), `${p.hitsSeed7} and ${p.hitsSeed8} of 64`);
+    r.realtime = await win.evaluate(async ([LONG, EDITS]) => {
+      const { renderPattern, encodeWav24, clickProject, onsets } = window.__timing;
+      const engine = window.__engine;
+      const report = {};
       // 3. real-time
       {
         const ac = engine.ac;
@@ -135,15 +159,8 @@ export async function run(t) {
           tempoChangedAtCycle: tempoChangedAt,
         };
       }
-      return report;
+      return report.realtime;
     }, [LONG, EDITS]);
-    const e = r.export;
-    t.check('export: all 64 clicks found (4 bars at 137 BPM)', e.found === e.expected, `${e.found}/${e.expected}`);
-    t.check('export: every click within 1 sample of the grid', e.maxErrorSamples <= 1, `max ${e.maxErrorSamples.toFixed(2)} samples @ ${e.sampleRate} Hz`);
-    const p = r.probability;
-    t.check('probability: same seed gives an identical WAV', p.sameSeedIdentical);
-    t.check('probability: a different seed gives a different WAV', p.otherSeedDiffers);
-    t.check('probability 50%: roughly half the hits play', [p.hitsSeed7, p.hitsSeed8].every((h) => h >= 16 && h <= 48), `${p.hitsSeed7} and ${p.hitsSeed8} of 64`);
     const rt = r.realtime;
     const intervals = rt.onsets - 1;
     const measured = intervals - rt.intervalsSkippedNearGaps;
@@ -152,8 +169,8 @@ export async function run(t) {
     t.check('real time: both tempos heard (128 then 150 BPM)', rt.intervalsAtTempo1 > 0 && rt.intervalsAtTempo2 > 0, `${rt.intervalsAtTempo1} at 128, ${rt.intervalsAtTempo2} at 150`);
     t.check('real time: no dropped, doubled or late clicks (only the tempo-change interval may differ)', rt.offGridIntervals.length <= 1, rt.offGridIntervals.length ? `off-grid ms: ${rt.offGridIntervals.join(', ')}` : 'none');
     t.check('real time: timing jitter at most 0.5 ms', rt.maxJitterSamples <= rt.sampleRate * 0.0005, `max ${rt.maxJitterSamples.toFixed(1)} samples @ ${rt.sampleRate} Hz`);
-    t.note('realtime', rt);
-    t.note('export', e);
+    t.note('realtime', r.realtime);
+    t.note('export', r.export);
     t.check('no errors in the page', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | ') || 'none');
   } finally {
     await closeApp(app, win).catch(() => app.close());

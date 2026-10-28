@@ -3,7 +3,7 @@
 // samples are flagged and relinkable, crash recovery, newer-format refusal.
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { closeApp, launchApp, newProfile, runStandalone, stubDialogs } from './lib.mjs';
+import { closeApp, crashApp, launchApp, newProfile, runStandalone, stubDialogs } from './lib.mjs';
 
 export async function run(t) {
   const profile = newProfile();
@@ -83,10 +83,7 @@ export async function run(t) {
   // 5. Crash recovery: edit, wait for autosave, kill the process.
   await win.click('[data-cell="t5:3"]');
   await win.waitForTimeout(6500);
-  const exited = new Promise((r) => app.process().once('exit', r));
-  app.process().kill('SIGKILL');
-  await exited;
-  await new Promise((r) => setTimeout(r, 1500));
+  await crashApp(app);
   ({ app, win, pageErrors } = await launchApp(profile));
   const offered = await win.waitForSelector('.modal[aria-label="Recover unsaved work?"]', { timeout: 5000 }).then(() => true, () => false);
   t.check('after a crash, recovery is offered', offered);
