@@ -1,99 +1,106 @@
-// Project files in the real Electron app:
-//  - save collects imported samples into <project>/samples
-//  - opening on a machine without the sample pool restores samples from the project folder
-//  - a project whose sample files are gone opens with those tracks marked missing (data kept)
-//  - autosave + recovery after the process is killed
-// Usage: xvfb-run -a node test/e2e/electron-files.mjs
-import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
+// Projects through the real UI (native dialogs answered automatically):
+// save collects samples, reopen on a machine without the sample pool, missing
+// samples are flagged and relinkable, crash recovery, newer-format refusal.
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-const require = createRequire(import.meta.url);
-const { _electron } = require('playwright');
-const electronPath = require('electron');
+import { closeApp, launchApp, newProfile, runStandalone, stubDialogs } from './lib.mjs';
 
-const userData = mkdtempSync(join(tmpdir(), 'bdb-user-'));
-const work = mkdtempSync(join(tmpdir(), 'bdb-proj-'));
-const launch = async () => {
-  const app = await _electron.launch({ executablePath: electronPath, args: ['.', `--user-data-dir=${userData}`, '--no-sandbox'] });
-  app.process().stderr.on('data', (d) => process.env.DEBUG && console.log('MAIN:', String(d).trim()));
-  const win = await app.firstWindow();
-  await win.waitForFunction(() => window.__engine?.sampleStatus('factory:kick') === 'ok', null, { timeout: 20000 });
-  return { app, win };
-};
-const report = {};
-// Closing a window with unsaved changes shows "Save changes?"; answer "Don't save".
-const closeApp = async (app, win) => {
-  const closed = new Promise((r) => app.process().once('exit', r));
-  await app.evaluate(({ BrowserWindow }) => void BrowserWindow.getAllWindows()[0].close());
-  const asked = await win.waitForSelector('.modal[aria-label="Save changes?"]', { timeout: 3000 }).then(() => true, () => false);
-  // The window closes during the click, which Playwright reports as an error.
-  if (asked) await win.click('.modal button:has-text("Don\'t save")').catch(() => {});
-  await closed;
-  return asked;
-};
-const step = (m) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}`, JSON.stringify(report));
+export async function run(t) {
+  const profile = newProfile();
+  const work = newProfile();
+  const projPath = join(work, 'Beat', 'Beat.badaboom');
+  const kick = readFileSync('resources/samples/kick-sub.wav');
+  const importAndAssign = async (win, name) => {
+    await win.click('.row >> nth=0 >> .track-head');
+    await win.setInputFiles('.browser input[type=file]', { name, mimeType: 'audio/wav', buffer: kick });
+    const label = name.replace(/\.wav$/, '');
+    await win.waitForSelector(`.sample:has-text("${label}")`);
+    await win.dblclick(`.sample:has-text("${label}")`);
+    await win.waitForTimeout(300);
+  };
 
-let { app, win } = await launch();
-// Import a sample and assign it to track 1 through the UI's file input.
-await win.setInputFiles('.browser input[type=file]', { name: 'my kick.wav', mimeType: 'audio/wav', buffer: readFileSync('resources/samples/kick-sub.wav') });
-await win.waitForSelector('.sample:has-text("my kick")');
-await win.dblclick('.sample:has-text("my kick")');
-await win.waitForTimeout(300);
-report.trackOneName = await win.textContent('.row >> nth=0 >> .track-name');
-step('Save to a known p');
-// Save to a known path via the bridge (the dialog is bypassed by passing a path).
-const projPath = join(work, 'Beat', 'Beat.badaboom');
-const text = await win.evaluate(() => window.__bdb.serializeProject(window.__engine['project']));
-step('got text ' + text.length);
-report.save = await win.evaluate(async ([path, text]) => window.bdb.saveProject({ path, saveAs: false, name: 'Beat', text }), [projPath, text]);
-step('saved');
-report.collected = readdirSync(join(work, 'Beat', 'samples'));
-report.askedToSaveOnClose = await closeApp(app, win);
+  // 1. Import, assign, save through the Save dialog.
+  let { app, win, pageErrors } = await launchApp(profile);
+  await importAndAssign(win, 'my kick.wav');
+  t.check('imported sample is assigned to track 1', (await win.textContent('.row >> nth=0 >> .track-name'))?.includes('my kick'));
+  await stubDialogs(app, { savePath: join(work, 'Beat.badaboom') });
+  await win.keyboard.press('Control+s');
+  await win.waitForFunction(() => !document.querySelector('.statusbar')?.textContent?.includes('unsaved'), null, { timeout: 10000 }).catch(() => {});
+  t.check('Save creates <name>/<name>.badaboom', existsSync(projPath), projPath);
+  const collected = existsSync(join(work, 'Beat', 'samples')) ? readdirSync(join(work, 'Beat', 'samples')) : [];
+  t.check('Save copies the imported sample into the project folder', collected.length === 1, collected);
+  t.check('status bar shows the saved path, no unsaved changes', !(await win.textContent('.statusbar')).includes('unsaved'));
+  t.check('closing a saved project does not ask to save', (await closeApp(app, win)) === false);
+  t.check('no page errors (save)', pageErrors.length === 0, pageErrors.join(' | ') || 'none');
 
-step('Simulate another ');
-// Simulate another computer: empty the sample pool, then open the project.
-rmSync(join(userData, 'sample-pool'), { recursive: true, force: true });
-({ app, win } = await launch());
-report.reopen = await win.evaluate(async (p) => {
-  const r = await window.bdb.openProject(p);
-  return { missing: r.missing, hasText: r.text.length > 0 };
-}, projPath);
-report.poolRestored = existsSync(join(userData, 'sample-pool', report.collected[0]));
+  // 2. Another computer: empty pool, open through the Open dialog.
+  rmSync(join(profile, 'sample-pool'), { recursive: true, force: true });
+  ({ app, win, pageErrors } = await launchApp(profile));
+  await stubDialogs(app, { openPath: projPath });
+  await win.keyboard.press('Control+o');
+  await win.waitForTimeout(1500);
+  t.check('reopened project shows the imported sample on track 1', (await win.textContent('.row >> nth=0 >> .track-name'))?.includes('my kick'));
+  t.check('sample restored from the project folder (no missing badge)', !(await win.$('.row >> nth=0 >> .badge.warn')));
+  t.check('sample copied back into the pool', existsSync(join(profile, 'sample-pool', collected[0] ?? 'none')));
 
-step('Now remove both c');
-// Now remove both copies: the project must still open and keep the reference.
-await closeApp(app, win);
-rmSync(join(userData, 'sample-pool'), { recursive: true, force: true });
-rmSync(join(work, 'Beat', 'samples'), { recursive: true, force: true });
-({ app, win } = await launch());
-report.missingCase = await win.evaluate(async (p) => {
-  const r = await window.bdb.openProject(p);
-  const project = window.__bdb.parseProject(r.text);
-  return { missing: r.missing, trackOneSample: project.tracks[0].sound.sampleId, refKept: !!project.samples[project.tracks[0].sound.sampleId] };
-}, projPath);
+  // 3. Sample gone everywhere: project still opens, track flagged, reference kept, relinkable.
+  await closeApp(app, win);
+  rmSync(join(profile, 'sample-pool'), { recursive: true, force: true });
+  rmSync(join(work, 'Beat', 'samples'), { recursive: true, force: true });
+  ({ app, win, pageErrors } = await launchApp(profile));
+  await stubDialogs(app, { openPath: projPath });
+  await win.keyboard.press('Control+o');
+  await win.waitForSelector('.row >> nth=0 >> .badge.warn', { timeout: 5000 }).catch(() => {});
+  t.check('track with a missing sample is marked "missing"', !!(await win.$('.row >> nth=0 >> .badge.warn')));
+  t.check('status bar reports missing samples', (await win.textContent('.statusbar')).includes('missing'));
+  const ref = await win.evaluate(() => {
+    const p = window.__engine['project'];
+    const id = p.tracks[0].sound.sampleId;
+    return { id, kept: !!p.samples[id] };
+  });
+  t.check('the missing sample reference is kept, not discarded', ref.id?.startsWith('user:') && ref.kept, ref);
+  await win.keyboard.press('Space');
+  await win.waitForTimeout(1200);
+  t.check('project with a missing sample still plays', await win.evaluate(() => window.__engine.isPlaying && window.__engine.audibleCycle() > 0.2));
+  await win.keyboard.press('Space');
+  await importAndAssign(win, 'replacement kick.wav');
+  t.check('relinking by assigning a new WAV clears the missing flag', !(await win.$('.row >> nth=0 >> .badge.warn')));
 
-step('Autosave + crash ');
-// Autosave + crash recovery: make an edit, wait for autosave, kill the process.
-await win.click('[data-cell="t5:3"]');
-await win.waitForTimeout(6500);
-const pid = app.process().pid;
-process.kill(pid, 'SIGKILL');
-await new Promise((r) => setTimeout(r, 1000));
-({ app, win } = await launch());
-await win.waitForSelector('.modal[aria-label="Recover unsaved work?"]', { timeout: 5000 }).then(
-  () => (report.recoveryOffered = true),
-  () => (report.recoveryOffered = false),
-);
-if (report.recoveryOffered) {
-  await win.click('.modal button.primary');
-  report.recoveredEditPresent = await win.evaluate(() => document.querySelector('[data-cell="t5:3"]').classList.contains('on'));
+  // 4. Newer file format is refused without losing the open project.
+  const newer = JSON.parse(readFileSync(projPath, 'utf8'));
+  newer.version = 99;
+  const newerPath = join(work, 'Future.badaboom');
+  writeFileSync(newerPath, JSON.stringify(newer));
+  const before = await win.evaluate(() => window.__engine['project'].tracks[0].name);
+  await stubDialogs(app, { openPath: newerPath });
+  await win.keyboard.press('Control+o');
+  await win.waitForSelector('.modal[aria-label="Save changes?"]', { timeout: 2000 }).then(() => win.click('.modal button:has-text("Don\'t save")')).catch(() => {});
+  await win.waitForTimeout(800);
+  t.check('a file from a newer version is refused with a message', (await win.textContent('.toast').catch(() => ''))?.includes('newer version'));
+  t.check('the open project is untouched after the refusal', (await win.evaluate(() => window.__engine['project'].tracks[0].name)) === before);
+  t.check('no page errors (open/missing)', pageErrors.length === 0, pageErrors.join(' | ') || 'none');
+
+  // 5. Crash recovery: edit, wait for autosave, kill the process.
+  await win.click('[data-cell="t5:3"]');
+  await win.waitForTimeout(6500);
+  const exited = new Promise((r) => app.process().once('exit', r));
+  app.process().kill('SIGKILL');
+  await exited;
+  await new Promise((r) => setTimeout(r, 1500));
+  ({ app, win, pageErrors } = await launchApp(profile));
+  const offered = await win.waitForSelector('.modal[aria-label="Recover unsaved work?"]', { timeout: 5000 }).then(() => true, () => false);
+  t.check('after a crash, recovery is offered', offered);
+  if (offered) {
+    await win.click('.modal button.primary');
+    t.check('recovered project contains the last edit', await win.evaluate(() => document.querySelector('[data-cell="t5:3"]').classList.contains('on')));
+  }
+  t.check('closing recovered (unsaved) work asks to save', await closeApp(app, win));
+
+  // 6. Clean close: no recovery prompt next time.
+  ({ app, win, pageErrors } = await launchApp(profile));
+  await win.waitForTimeout(800);
+  t.check('after a clean close, no recovery prompt', !(await win.$('.modal[aria-label="Recover unsaved work?"]')));
+  await closeApp(app, win);
 }
-await closeApp(app, win);
-step('After a clean clo');
-// After a clean close, no recovery prompt.
-({ app, win } = await launch());
-await win.waitForTimeout(500);
-report.noPromptAfterCleanClose = !(await win.$('.modal[aria-label="Recover unsaved work?"]'));
-report.askedToSaveWhenClean = await closeApp(app, win);
-step('done');
+
+await runStandalone(import.meta.url, 'Projects, missing samples and recovery', run);

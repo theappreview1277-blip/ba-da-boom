@@ -442,10 +442,8 @@ export function App() {
   const lane = pattern.lanes[track.id];
   const step = lane.steps[state.selectedStep] ?? lane.steps[0];
   const sampleStatus = useCallback((id: string) => engineRef.current?.sampleStatus(id), []);
-  const usedMissing = useMemo(
-    () => project.tracks.filter((t) => t.sound.sampleId && sampleStatus(t.sound.sampleId) === 'missing').length,
-    [project.tracks, sampleStatus, state], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  // Not memoised: sample status lives in the engine and changes without a project change.
+  const usedMissing = project.tracks.filter((t) => t.sound.sampleId && sampleStatus(t.sound.sampleId) === 'missing').length;
 
   return (
     <div className="app">

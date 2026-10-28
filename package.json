@@ -17,7 +17,7 @@
     "test": "vitest run",
     "start": "npm run build && electron .",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "test:e2e": "node test/e2e/smoke.mjs && node test/e2e/timing.mjs"
+    "test:e2e": "node test/e2e/run-all.mjs"
   },
   "devDependencies": {
     "@strudel/core": "1.2.6",

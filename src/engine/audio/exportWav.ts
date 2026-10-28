@@ -55,6 +55,11 @@ export async function renderPattern(project: Project, opts: ExportOptions): Prom
   const offline = new OfflineAudioContext(2, Math.ceil((musicalSeconds + tail) * sampleRate), sampleRate);
   let events = 0;
   let rendered: AudioBuffer;
+  // Freeze the live context while superdough's globals point at the offline one:
+  // otherwise 'ended' callbacks of live voices that are still ringing would run
+  // against the offline context and fail.
+  const resumeLive = liveCtx instanceof AudioContext && liveCtx.state === 'running';
+  if (resumeLive) await liveCtx.suspend();
   try {
     setAudioContext(offline);
     // A fresh controller of the same class superdough uses, bound to the offline context.
@@ -88,6 +93,7 @@ export async function renderPattern(project: Project, opts: ExportOptions): Prom
     setAudioContext(liveCtx);
     setSuperdoughAudioController(liveController);
     setMaxPolyphony(DEFAULT_MAX_POLYPHONY);
+    if (resumeLive) await (liveCtx as AudioContext).resume();
   }
   const trimmed = trimTail(rendered, Math.ceil(musicalSeconds * sampleRate));
   return { buffer: trimmed, musicalSeconds, events, peak: peakOf(trimmed) };

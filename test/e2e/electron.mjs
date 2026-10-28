@@ -1,68 +1,84 @@
-// Runs the real Electron app (built files) and checks: the bdb:// protocol and CSP
-// load the UI, superdough's worklets and samples load, WAV import goes through the
-// main process, and save -> open round-trips through IPC with collected samples.
-// Usage: xvfb-run -a node test/e2e/electron.mjs
-import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-const require = createRequire(import.meta.url);
-const { _electron } = require('playwright');
-const electronPath = require('electron');
+// Desktop security and services in the real app: sandboxed renderer, the bdb://
+// protocol (no path traversal), CSP blocks the network, WAV import validation.
+import { readFileSync } from 'node:fs';
+import { closeApp, launchApp, runStandalone } from './lib.mjs';
 
-const userData = mkdtempSync(join(tmpdir(), 'bdb-user-'));
-const app = await _electron.launch({ executablePath: electronPath, args: ['.', `--user-data-dir=${userData}`, '--no-sandbox'], cwd: process.cwd() });
-const win = await app.firstWindow();
-const logs = [];
-win.on('console', (m) => (m.type() === 'error' || m.type() === 'warning') && logs.push(`${m.type()}: ${m.text()}`));
-win.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
-await win.waitForFunction(() => window.__engine?.sampleStatus('factory:kick') === 'ok', null, { timeout: 20000 });
-const report = {};
-report.url = win.url();
-report.hasBridge = await win.evaluate(() => typeof window.bdb === 'object' && typeof window.require === 'undefined' && typeof window.process === 'undefined');
-report.statuses = await win.evaluate(() => Object.fromEntries([...window.__engine['status'].entries()].filter(([, s]) => s !== 'ok')));
-
-// Import a WAV through the main process (copy of the factory snare)
-const wav = [...readFileSync('resources/samples/snare.wav')];
-report.import = await win.evaluate(async (bytes) => window.bdb.importSample('my snare.wav', new Uint8Array(bytes)), wav);
-// Refuse a non-WAV
-report.rejectsNonWav = await win.evaluate(async () => {
+export async function run(t) {
+  const { app, win, pageErrors } = await launchApp();
   try {
-    await window.bdb.importSample('x.wav', new TextEncoder().encode('not a wav file at all, definitely not'));
-    return false;
-  } catch {
-    return true;
-  }
-});
-// Pool URL is fetchable; path traversal is not
-report.poolFetch = await win.evaluate(async (f) => (await fetch(`bdb://app/pool/${f}`)).status, report.import.file);
-report.traversal = await win.evaluate(async () => {
-  const out = [];
-  for (const u of ['bdb://app/pool/..%2F..%2FPreferences', 'bdb://app/pool/../../Preferences', 'bdb://app/..%2Fpackage.json', 'bdb://app/%2e%2e/package.json', 'bdb://other/x']) {
-    try {
-      out.push(`${u} -> ${(await fetch(u)).status}`);
-    } catch {
-      out.push(`${u} -> fetch refused`);
-    }
-  }
-  return out;
-});
+    t.check('UI is served from bdb://app', win.url().startsWith('bdb://app/'), win.url());
+    const isolation = await win.evaluate(() => ({
+      bridge: typeof window.bdb === 'object',
+      require: typeof window.require,
+      process: typeof window.process,
+    }));
+    t.check('renderer has the bridge but no Node access', isolation.bridge && isolation.require === 'undefined' && isolation.process === 'undefined', isolation);
+    const sandboxed = await app.evaluate(({ BrowserWindow }) => {
+      const p = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
+      return { sandbox: p.sandbox, contextIsolation: p.contextIsolation, nodeIntegration: p.nodeIntegration };
+    });
+    t.check('window is sandboxed with context isolation', sandboxed.sandbox && sandboxed.contextIsolation && !sandboxed.nodeIntegration, sandboxed);
 
-// Play for 2 s
-await win.keyboard.press('Space');
-await win.waitForTimeout(2000);
-report.playingCycle = await win.evaluate(() => window.__engine.audibleCycle());
-await win.keyboard.press('Space');
-report.csp = await win.evaluate(async () => {
-  try {
-    await fetch('https://example.com');
-    return 'network allowed';
-  } catch {
-    return 'blocked';
+    const wav = [...readFileSync('resources/samples/snare.wav')];
+    const imported = await win.evaluate(async (bytes) => window.bdb.importSample('my snare.wav', new Uint8Array(bytes)), wav);
+    t.check('WAV import goes through the main process', /^[0-9a-f]{32}\.wav$/.test(imported.file), imported.file);
+    const rejects = await win.evaluate(async () => {
+      try {
+        await window.bdb.importSample('x.wav', new TextEncoder().encode('not a wav file at all, definitely not'));
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    t.check('non-WAV data is refused', rejects);
+    const poolStatus = await win.evaluate(async (f) => (await fetch(`bdb://app/pool/${f}`)).status, imported.file);
+    t.check('imported sample is served from the pool', poolStatus === 200, poolStatus);
+
+    const traversal = await win.evaluate(async () => {
+      const out = {};
+      for (const u of [
+        'bdb://app/pool/..%2F..%2FPreferences',
+        'bdb://app/pool/../../Preferences',
+        'bdb://app/..%2Fpackage.json',
+        'bdb://app/%2e%2e/package.json',
+        'bdb://app/pool/..%5C..%5CPreferences',
+        'bdb://other/x',
+      ]) {
+        try {
+          out[u] = (await fetch(u)).status;
+        } catch {
+          out[u] = 'refused';
+        }
+      }
+      return out;
+    });
+    t.check('path traversal through bdb:// is refused', Object.values(traversal).every((s) => s !== 200), traversal);
+    const net = await win.evaluate(async () => {
+      try {
+        await fetch('https://example.com');
+        return 'allowed';
+      } catch {
+        return 'blocked';
+      }
+    });
+    t.check('Content Security Policy blocks network access', net === 'blocked', net);
+    const nav = await win.evaluate(() => {
+      const before = location.href;
+      location.href = 'https://example.com';
+      return before;
+    });
+    await win.waitForTimeout(500);
+    t.check('navigation away from the app is blocked', win.url() === nav, win.url());
+
+    await win.keyboard.press('Space');
+    await win.waitForTimeout(2000);
+    const c = await win.evaluate(() => window.__engine.audibleCycle());
+    t.check('plays audio (clock advancing after 2 s)', c > 0.5, c?.toFixed(3));
+    await win.keyboard.press('Space');
+    t.check('no errors in the page', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | ') || 'none');
+  } finally {
+    await closeApp(app, win).catch(() => app.close());
   }
-});
-report.logs = logs;
-console.log(JSON.stringify(report, null, 2));
-await app.close();
-report.lockRemovedOnCleanExit = !existsSync(join(userData, 'autosave', 'session.lock'));
-console.log('clean exit removed lock:', report.lockRemovedOnCleanExit, readdirSync(userData).join(','));
+}
+
+await runStandalone(import.meta.url, 'Desktop security and services', run);

@@ -45,6 +45,7 @@ export class AudioEngine {
   private playingPatternId: string | null = null;
   private status = new Map<string, SampleStatus>();
   private urls = new Map<string, string>();
+  private retries = 0;
   private stopping: Promise<void> | null = null;
   private trackAnalysers = new Map<number, AnalyserNode>();
   private meterBuf = new Float32Array(2048);
@@ -91,8 +92,13 @@ export class AudioEngine {
   async loadSamples(project: Project) {
     const jobs: Promise<void>[] = [];
     for (const ref of [...Object.values(project.samples), ...METRONOME_SAMPLES]) {
-      const url = this.resolveUrl(ref);
-      if (this.urls.get(ref.id) === url && this.status.get(ref.id) !== 'missing') continue;
+      const base = this.resolveUrl(ref);
+      const known = this.urls.get(ref.id)?.split('?')[0] === base;
+      const wasMissing = known && this.status.get(ref.id) === 'missing';
+      if (known && !wasMissing) continue;
+      // Strudel caches a failed load per URL, so a retry (the file was put back,
+      // or the same WAV was imported again) needs a URL it hasn't seen.
+      const url = wasMissing ? `${base}?retry=${++this.retries}` : base;
       this.urls.set(ref.id, url);
       this.setStatus(ref.id, 'loading');
       jobs.push(
