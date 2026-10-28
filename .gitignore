@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.log
+test/e2e/out-*
+test/e2e/timing-result.txt
+build/*.ico

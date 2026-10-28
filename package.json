@@ -1,0 +1,93 @@
+{
+  "name": "badaboom",
+  "productName": "Ba-da-boom",
+  "version": "0.1.0",
+  "description": "Drum machine with a visual step sequencer, powered by Strudel's pattern engine",
+  "license": "AGPL-3.0-or-later",
+  "author": "Ba-da-boom contributors",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev:renderer": "vite",
+    "build:renderer": "vite build",
+    "build:electron": "node scripts/build-electron.mjs",
+    "build": "npm run build:renderer && npm run build:electron",
+    "samples": "node scripts/make-factory-samples.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "npm run build && electron .",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "test:e2e": "node test/e2e/smoke.mjs && node test/e2e/timing.mjs"
+  },
+  "devDependencies": {
+    "@strudel/core": "1.2.6",
+    "@strudel/webaudio": "1.3.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "44.9.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.25.12",
+    "playwright": "1.63.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "superdough": "1.3.0",
+    "typescript": "5.9",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
+  },
+  "homepage": "https://github.com/theappreview1277-blip/ba-da-boom",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/theappreview1277-blip/ba-da-boom.git"
+  },
+  "build": {
+    "appId": "io.github.badaboom.drummachine",
+    "productName": "Ba-da-boom",
+    "copyright": "Copyright © Ba-da-boom contributors. AGPL-3.0-or-later.",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.map",
+      "dist-electron/**/*",
+      "!dist-electron/**/*.map",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "Ba-da-boom-Setup-${version}-x64-unsigned.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Ba-da-boom",
+      "uninstallDisplayName": "Ba-da-boom",
+      "license": "LICENSE",
+      "deleteAppDataOnUninstall": false
+    },
+    "fileAssociations": [
+      {
+        "ext": "badaboom",
+        "name": "Ba-da-boom project",
+        "description": "Ba-da-boom project",
+        "role": "Editor"
+      }
+    ]
+  }
+}
