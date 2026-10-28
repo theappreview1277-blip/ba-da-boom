@@ -47,3 +47,62 @@ export function applySteps(lane: Lane, bits: boolean[]): Lane {
   const steps = lane.steps.map((s, i) => (i >= bits.length || s.locked || s.on === bits[i] ? s : { ...s, on: bits[i] }));
   return { length: bits.length, steps };
 }
+
+export interface VariationOptions {
+  seed: number;
+  /** 0..1: how much changes. */
+  amount: number;
+  /** Hits on the beat (every 4th step) stay where they are. */
+  keepSkeleton: boolean;
+  /** Hits keep their velocity; otherwise velocities are nudged. */
+  keepAccents: boolean;
+  /** The number of hits stays the same: hits move instead of appearing or disappearing. */
+  keepDensity: boolean;
+  salt?: number;
+}
+
+/**
+ * A variation of a lane: some hits move to a neighbouring step, and (unless the
+ * density is kept) some appear or disappear. Locked steps never change, and
+ * neither do steps past the lane length.
+ */
+export function varyLane(lane: Lane, o: VariationOptions): Lane {
+  const rand = rng((o.seed * 1000003 + (o.salt ?? 0) * 7919 + 17) >>> 0);
+  const n = lane.length;
+  const steps = lane.steps.slice();
+  const fixed = (i: number) => steps[i].locked || (o.keepSkeleton && i % 4 === 0 && lane.steps[i].on);
+  const nudge = (v: number) => {
+    const d = (rand() - 0.5) * 0.4 * o.amount;
+    return o.keepAccents || d === 0 ? v : Math.min(1, Math.max(0.2, +(v + d).toFixed(2)));
+  };
+  const hits = [...Array(n).keys()].filter((i) => lane.steps[i].on && !fixed(i));
+  for (const i of hits) {
+    const r = rand();
+    const dirRoll = rand();
+    if (r < o.amount * 0.6) {
+      // Move to the nearest free neighbour, one or two steps away.
+      const order = dirRoll < 0.5 ? [-1, 1, -2, 2] : [1, -1, 2, -2];
+      const to = order.map((d) => (i + d + n) % n).find((j) => !steps[j].on && !fixed(j));
+      if (to !== undefined) {
+        steps[to] = { ...steps[to], on: true, velocity: nudge(steps[i].velocity), probability: steps[i].probability, micro: steps[i].micro, ratchet: steps[i].ratchet };
+        steps[i] = { ...steps[i], on: false };
+        continue;
+      }
+    } else if (!o.keepDensity && r < o.amount * 0.8) {
+      steps[i] = { ...steps[i], on: false };
+      continue;
+    }
+    steps[i] = { ...steps[i], velocity: nudge(steps[i].velocity) };
+  }
+  if (!o.keepDensity) {
+    // Occasionally add a hit, more often near existing ones (ghost notes and pickups).
+    for (let i = 0; i < n; i++) {
+      const r = rand();
+      const v = rand();
+      if (steps[i].on || fixed(i) || lane.steps[i].on) continue;
+      const nearHit = steps[(i + 1) % n].on || steps[(i + n - 1) % n].on;
+      if (r < o.amount * (nearHit ? 0.15 : 0.05)) steps[i] = { ...steps[i], on: true, velocity: +(0.4 + 0.4 * v).toFixed(2) };
+    }
+  }
+  return { ...lane, steps };
+}

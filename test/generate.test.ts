@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { euclidSteps } from '../src/engine/strudel/generate';
 import { pure } from '../src/engine/strudel/strudel';
 import { emptyLane } from '../src/model/defaults';
-import { applySteps, randomiseLane } from '../src/model/generate';
+import { applySteps, randomiseLane, varyLane } from '../src/model/generate';
 
 const onsetsOf = (pat: any, steps: number) =>
   pat
@@ -67,5 +67,49 @@ describe('randomise', () => {
     const hits = out.steps.filter((s) => s.on).length;
     expect(hits).toBeGreaterThan(8);
     expect(hits).toBeLessThan(26);
+  });
+});
+
+describe('variations', () => {
+  const groove = () => {
+    const l = emptyLane(16);
+    [0, 3, 6, 8, 10, 14].forEach((i, k) => (l.steps[i] = { ...l.steps[i], on: true, velocity: 0.5 + k * 0.08 }));
+    l.steps[10].locked = true;
+    return l;
+  };
+  const on = (l: ReturnType<typeof groove>) => l.steps.flatMap((s, i) => (s.on ? [i] : []));
+  const base = { amount: 0.8, keepSkeleton: false, keepAccents: false, keepDensity: false };
+  it('is reproducible and changes with the seed', () => {
+    expect(varyLane(groove(), { ...base, seed: 3 })).toEqual(varyLane(groove(), { ...base, seed: 3 }));
+    const outs = new Set([1, 2, 3, 4, 5].map((seed) => JSON.stringify(on(varyLane(groove(), { ...base, seed })))));
+    expect(outs.size).toBeGreaterThan(2);
+  });
+  it('amount 0 changes nothing', () => {
+    expect(varyLane(groove(), { ...base, amount: 0, seed: 1 })).toEqual(groove());
+  });
+  it('locked steps never change', () => {
+    for (let seed = 0; seed < 40; seed++) expect(varyLane(groove(), { ...base, amount: 1, seed }).steps[10]).toEqual(groove().steps[10]);
+  });
+  it('keeping the skeleton keeps every on-beat hit', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const v = varyLane(groove(), { ...base, amount: 1, keepSkeleton: true, seed });
+      expect(v.steps[0]).toEqual(groove().steps[0]);
+      expect(v.steps[8]).toEqual(groove().steps[8]);
+    }
+  });
+  it('keeping density keeps the number of hits; keeping accents keeps the velocities', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const v = varyLane(groove(), { ...base, amount: 1, keepDensity: true, keepAccents: true, seed });
+      expect(on(v).length).toBe(6);
+      const vels = (l: ReturnType<typeof groove>) => l.steps.filter((s) => s.on).map((s) => s.velocity).sort();
+      expect(vels(v)).toEqual(vels(groove()));
+    }
+  });
+  it('a moved hit keeps its step details', () => {
+    const l = emptyLane(16);
+    l.steps[5] = { ...l.steps[5], on: true, ratchet: 3, probability: 0.5 };
+    const v = varyLane(l, { ...base, amount: 1, keepDensity: true, seed: 2 });
+    const hit = v.steps.find((s) => s.on)!;
+    expect(hit).toMatchObject({ ratchet: 3, probability: 0.5 });
   });
 });

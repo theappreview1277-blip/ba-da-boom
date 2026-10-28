@@ -94,6 +94,35 @@ export async function run(t) {
     t.check('generated pattern plays', await win.evaluate(() => window.__engine.isPlaying && window.__engine.audibleCycle() > 0.2));
     await win.keyboard.press('Space');
 
+    // Variation: a new pattern after the current one, queued while playing.
+    await win.keyboard.press('Control+z'); // back to before "All tracks"
+    const pBefore = await win.evaluate(() => {
+      const p = window.__engine['project'];
+      const cur = p.patterns.find((x) => x.id === p.currentPatternId);
+      return { ids: p.patterns.map((x) => x.id), cur: p.currentPatternId, kick: cur.lanes.t1.steps.map((s) => s.on), lanes: JSON.stringify(cur.lanes) };
+    });
+    await win.keyboard.press('Space');
+    await win.waitForTimeout(300);
+    await win.click('.generate button:has-text("Make variation")');
+    await win.waitForTimeout(200);
+    const v = await win.evaluate(() => {
+      const p = window.__engine['project'];
+      const cur = p.patterns.find((x) => x.id === p.currentPatternId);
+      return { ids: p.patterns.map((x) => x.id), cur: p.currentPatternId, name: cur.name, kick: cur.lanes.t1.steps.map((s) => s.on), lanes: cur.lanes, queued: window.__engine.queued };
+    });
+    const at = v.ids.indexOf(v.cur);
+    t.check('Make variation adds a pattern right after the current one and selects it', v.ids.length === pBefore.ids.length + 1 && v.ids[at - 1] === pBefore.cur, v.name);
+    t.check('with "keep beat skeleton", on-beat kick hits are kept', pBefore.kick.every((on, i) => i % 4 !== 0 || !on || v.kick[i]));
+    t.check('the variation differs from the original', JSON.stringify(v.lanes) !== pBefore.lanes, v.name);
+    t.check('while playing, the variation is queued for the next bar', v.queued?.patternId === v.cur && Number.isInteger(v.queued.atCycle), v.queued);
+    await win.waitForFunction((id) => window.__engine.audiblePatternId === id, v.cur, { timeout: 6000 }).catch(() => {});
+    t.check('the variation becomes audible without stopping', await win.evaluate((id) => window.__engine.audiblePatternId === id && window.__engine.isPlaying, v.cur));
+    await win.keyboard.press('Space');
+    await win.keyboard.press('Control+z');
+    await win.waitForTimeout(200);
+    t.check('undo removes the variation', (await win.evaluate(() => window.__engine['project'].patterns.length)) === pBefore.ids.length);
+    await win.keyboard.press('Control+y');
+
     // Locks are saved in the project file.
     const work = newProfile();
     await stubDialogs(app, { savePath: join(work, 'Gen.badaboom') });

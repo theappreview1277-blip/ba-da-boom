@@ -4,6 +4,7 @@ import { encodeWav24, renderPattern } from '../engine/audio/exportWav';
 import { trackControls } from '../engine/strudel/fromModel';
 import { emptyPattern, newProject } from '../model/defaults';
 import {
+  addVariation,
   clearLane,
   clearPattern,
   currentLane,
@@ -572,6 +573,14 @@ export function App() {
             trackIndex={trackIndex}
             laneLength={lane.length}
             lockedCount={lane.steps.filter((s) => s.locked).length}
+            patternName={pattern.name}
+            onVariation={(opts) => {
+              const next = addVariation(projectRef.current, projectRef.current.currentPatternId, opts);
+              edit(() => next);
+              // While playing, the new pattern comes in at the next bar, like pressing its number.
+              engineRef.current?.switchPattern(next.currentPatternId);
+              notify(`Pattern ${currentPattern(next).name} added`);
+            }}
             onEuclid={(bits) => {
               edit((p) => setLane(p, p.currentPatternId, track.id, (l) => applySteps(l, bits)));
               notify(`Euclidean rhythm written to track ${trackIndex + 1}`);

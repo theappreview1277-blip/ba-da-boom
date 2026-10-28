@@ -1,4 +1,5 @@
 import { emptyLane, emptyStep, newId } from './defaults';
+import { varyLane, type VariationOptions } from './generate';
 import { MAX_STEPS, type Lane, type Pattern, type Project, type Step, type TrackSound } from './types';
 
 // Pure project edits. Each returns a new Project and never mutates its input,
@@ -111,4 +112,16 @@ export function redo(h: History): History {
 
 export function setLane(p: Project, patternId: string, trackId: string, fn: (l: Lane) => Lane): Project {
   return mapLane(p, patternId, trackId, fn);
+}
+
+/** A new pattern after `patternId`: a seeded variation of every lane. Becomes the current pattern. */
+export function addVariation(p: Project, patternId: string, opts: Omit<VariationOptions, 'salt'>): Project {
+  const dup = duplicatePattern(p, patternId);
+  if (dup === p) return p;
+  const src = p.patterns.find((x) => x.id === patternId)!;
+  const id = dup.currentPatternId;
+  const lanes = Object.fromEntries(
+    Object.entries(currentPattern(dup).lanes).map(([trackId, lane]) => [trackId, varyLane(lane, { ...opts, salt: p.tracks.findIndex((t) => t.id === trackId) })]),
+  );
+  return { ...dup, patterns: dup.patterns.map((pt) => (pt.id === id ? { ...pt, name: `${src.name} var ${opts.seed}`, lanes } : pt)) };
 }
