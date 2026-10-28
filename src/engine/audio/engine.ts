@@ -46,6 +46,7 @@ export class AudioEngine {
   private playingPatternId: string | null = null;
   private status = new Map<string, SampleStatus>();
   private urls = new Map<string, string>();
+  private buffers = new Map<string, AudioBuffer>();
   private retries = 0;
   private stopping: Promise<void> | null = null;
   private trackAnalysers = new Map<number, AnalyserNode>();
@@ -89,6 +90,11 @@ export class AudioEngine {
     return this.scheduler?.started ?? false;
   }
 
+  /** The decoded sample, for drawing its waveform. */
+  sampleBuffer(id: string): AudioBuffer | undefined {
+    return this.status.get(id) === 'ok' ? this.buffers.get(id) : undefined;
+  }
+
   sampleStatus(id: string): SampleStatus | undefined {
     return this.status.get(id);
   }
@@ -112,6 +118,7 @@ export class AudioEngine {
             await samples({ [soundKey(ref.id)]: [url] });
             const buf = await loadBuffer(url, this.ac);
             if (!buf || buf.length === 0) throw new Error('empty');
+            this.buffers.set(ref.id, buf);
             this.setStatus(ref.id, 'ok');
           } catch {
             this.setStatus(ref.id, 'missing');

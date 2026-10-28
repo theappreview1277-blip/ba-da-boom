@@ -1,6 +1,7 @@
 import type { Step, Track, TrackSound } from '../model/types';
 import { RELEASE_FULL } from '../model/types';
 import { Slider, db, hz, logFreq, pct, sec } from './controls';
+import { Waveform } from './Waveform';
 
 interface Props {
   track: Track;
@@ -9,13 +10,14 @@ interface Props {
   stepIndex: number;
   laneLength: number;
   sampleName: string;
+  sampleBuffer: AudioBuffer | undefined;
   onStep: (patch: Partial<Step>, mergeKey?: string) => void;
   onSound: (patch: Partial<TrackSound>, mergeKey?: string) => void;
   onRename: (name: string) => void;
   onAudition: () => void;
 }
 
-export function Inspector({ track, trackIndex, step, stepIndex, laneLength, sampleName, onStep, onSound, onRename, onAudition }: Props) {
+export function Inspector({ track, trackIndex, step, stepIndex, laneLength, sampleName, sampleBuffer, onStep, onSound, onRename, onAudition }: Props) {
   const s = track.sound;
   return (
     <div className="inspector">
@@ -67,6 +69,7 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
         <div className="sample-line" title="Drag a sample from the browser or drop a WAV file on the track to change it">
           Sample: <strong>{sampleName}</strong>
         </div>
+        <Waveform buffer={sampleBuffer} start={s.start} end={s.end} label={`Waveform of ${sampleName}`} />
         <div className="sound-grid">
           <Slider label="Volume" value={s.volume} min={0} max={1.5} format={db} onChange={(v, k) => onSound({ volume: v }, k)} />
           <Slider label="Pan" value={s.pan} min={-1} max={1} format={(v) => (Math.abs(v) < 0.01 ? 'C' : v < 0 ? `L${Math.round(-v * 100)}` : `R${Math.round(v * 100)}`)} onChange={(v, k) => onSound({ pan: v }, k)} />

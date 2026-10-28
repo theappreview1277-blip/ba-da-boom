@@ -729,6 +729,7 @@ export function App() {
               stepIndex={state.selectedStep}
               laneLength={lane.length}
               sampleName={track.sound.sampleId ? project.samples[track.sound.sampleId]?.name ?? 'Unknown' : 'None'}
+            sampleBuffer={track.sound.sampleId ? engineRef.current?.sampleBuffer(track.sound.sampleId) : undefined}
               onStep={(patch, k) => edit((p) => setStep(p, p.currentPatternId, track.id, state.selectedStep, patch), k && `step:${k}`)}
               onSound={(patch, k) => edit((p) => setTrackSound(p, track.id, patch), k && `sound:${k}`)}
               onRename={(name) => edit((p) => setTrack(p, track.id, { name }), `rename:${track.id}`)}

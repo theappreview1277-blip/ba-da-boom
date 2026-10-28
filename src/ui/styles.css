@@ -864,3 +864,17 @@ button.danger {
   background: var(--warn);
   border-color: var(--warn);
 }
+
+.waveform {
+  margin: 6px 0 8px;
+}
+.waveform canvas {
+  display: block;
+  max-width: 100%;
+  border-radius: var(--radius);
+}
+.waveform figcaption {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+}

@@ -11,6 +11,22 @@ export async function run(t) {
     const notOk = Object.entries(statuses).filter(([, s]) => s !== 'ok');
     t.check('all factory samples load', notOk.length === 0, notOk.length ? notOk : `${Object.keys(statuses).length} samples`);
 
+    // Waveform of the selected track's sample, with the played region.
+    const wave = await win.evaluate(() => {
+      const c = document.querySelector('.waveform canvas');
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const colors = new Set();
+      for (let i = 0; i < d.length; i += 16) colors.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+      return { colors: colors.size, caption: document.querySelector('.waveform figcaption').textContent };
+    });
+    t.check('the inspector draws the sample waveform', wave.colors > 3 && /plays 0–100%/.test(wave.caption), wave.caption);
+    await win.locator('.inspector .slider:has(label:text-is("Start")) input').fill('0.5');
+    const cap = await win.textContent('.waveform figcaption');
+    t.check('moving Start updates the played region', /plays 50–100%/.test(cap ?? ''), cap);
+    await win.evaluate(() => document.activeElement?.blur());
+    await win.keyboard.press('Control+z');
+    t.check('undo puts Start back', /plays 0–100%/.test((await win.textContent('.waveform figcaption')) ?? ''));
+
     await win.keyboard.press('Space');
     await win.waitForTimeout(1500);
     const cycle = await win.evaluate(() => window.__engine.audibleCycle());
