@@ -11,6 +11,9 @@ export const CHANNELS = {
   saveStems: 'bdb:save-stems',
   appInfo: 'bdb:app-info',
   showInFolder: 'bdb:show-in-folder',
+  kitList: 'bdb:kit-list',
+  kitDownload: 'bdb:kit-download',
+  kitProgress: 'bdb:kit-progress',
   beforeClose: 'bdb:before-close',
   closeReady: 'bdb:close-ready',
   closePending: 'bdb:close-pending',
@@ -45,6 +48,30 @@ export interface AppInfo {
   notices: string;
 }
 
+export interface KitSample {
+  sound: string;
+  index: number;
+  /** Pool file name (content hash). */
+  file: string;
+}
+
+export interface KitResult {
+  kit: string;
+  /** Sound name -> number of variants in the kit. */
+  sounds: Record<string, number>;
+  samples: KitSample[];
+  /** Files that could not be downloaded. */
+  failed: number;
+  /** Files fetched from the internet (0 when the kit is bundled or already in the pool). */
+  downloaded: number;
+}
+
+export interface KitProgress {
+  kit: string;
+  done: number;
+  total: number;
+}
+
 /** The API exposed to the renderer as window.bdb. */
 export interface DesktopApi {
   importSample(name: string, bytes: Uint8Array): Promise<{ file: string }>;
@@ -58,6 +85,11 @@ export interface DesktopApi {
   saveStems(name: string, files: { name: string; bytes: Uint8Array }[]): Promise<string | null>;
   appInfo(): Promise<AppInfo>;
   showInFolder(path: string): Promise<void>;
+  /** Strudel's drum machine kits: name -> sound -> number of variants. */
+  kitList(): Promise<Record<string, Record<string, number>>>;
+  /** Puts a kit into the sample pool: from the bundled kits, the pool itself, or a download. */
+  kitDownload(name: string): Promise<KitResult>;
+  onKitProgress(cb: (p: KitProgress) => void): void;
   onBeforeClose(cb: () => void): void;
   closeReady(): Promise<void>;
   /** The renderer is asking the user about unsaved changes; don't force-close. */

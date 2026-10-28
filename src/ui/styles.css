@@ -74,6 +74,7 @@ button.small,
 }
 input[type='number'],
 input[type='search'],
+input[type='text'],
 select,
 .track-rename {
   background: var(--bg);
@@ -422,6 +423,22 @@ select,
   padding: 10px;
   min-height: 100%;
 }
+.kit-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+.kit-pick select {
+  flex: 1;
+  min-width: 0;
+}
+.kit-progress {
+  font-size: 12px;
+  color: var(--accent);
+  margin: -4px 0 8px;
+}
 .browser-head {
   display: flex;
   gap: 6px;
@@ -603,16 +620,16 @@ select,
     gap: 4px;
     min-width: 0;
   }
-}
-@media (max-width: 1100px) {
-  .workspace {
-    grid-template-columns: 130px 1fr 240px;
-  }
   .browser-head {
     flex-wrap: wrap;
   }
   .browser-head input {
     flex-basis: 100%;
+  }
+}
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 130px 1fr 240px;
   }
 }
 

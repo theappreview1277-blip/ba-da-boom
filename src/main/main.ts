@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, promises as fs } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { downloadKit, kitList } from './kits';
 import { CHANNELS, type OpenResult, type SaveRequest, type SaveResult } from './ipc';
 
 const isDev = process.env.BDB_DEV === '1';
@@ -321,6 +322,17 @@ function registerIpc() {
       notices,
     };
   });
+
+  ipcMain.handle(CHANNELS.kitList, () => kitList());
+  ipcMain.handle(CHANNELS.kitDownload, (e, name: unknown) =>
+    downloadKit(name, {
+      cacheDir: join(userDir(), 'kits'),
+      poolHas: (file) => existsSync(join(POOL_DIR(), file)),
+      addToPool,
+      isWav,
+      progress: (p) => e.sender.send(CHANNELS.kitProgress, p),
+    }),
+  );
 
   ipcMain.handle(CHANNELS.showInFolder, (_e, p: unknown) => {
     if (typeof p === 'string' && existsSync(p)) shell.showItemInFolder(p);

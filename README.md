@@ -14,6 +14,8 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
 * Tempo, swing, metronome, mute/solo, immediate stop
 * Patterns with copy/paste/duplicate/clear, undo/redo, quantised switching at the next bar
 * Synthesised CC0 factory kit, WAV import (drag and drop or Import…), auditioning
+* Kit menu with Strudel's 71 drum machine kits (TR-808, TR-909, LinnDrum, MPC60…), included in the
+  installer and fetched by `npm run kits` at build time (not stored in git; no licence is stated for them)
 * Per-track volume, pan, pitch, sample start/end, attack/release, choke groups,
   low/high-pass, drive, delay and reverb sends
 * Track and master meters, clip light, soft-clip safety stage

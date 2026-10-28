@@ -31,9 +31,12 @@ import {
   toggleStep,
 } from '../model/ops';
 import { applySteps, randomiseLane } from '../model/generate';
+import { FACTORY_SAMPLES } from '../model/factory';
+import { kitAssignments, kitLabel, kitSampleName } from '../model/kits';
+import type { KitProgress, KitSample } from '../main/ipc';
 import { parseProject, serializeProject } from '../model/serialize';
 import { STEPS_PER_BAR, type Project, type SampleRef } from '../model/types';
-import { Slider, db } from './controls';
+import { NumberField, Slider, db } from './controls';
 import { desktop, inElectron, sampleUrl } from './desktop';
 import { Grid } from './Grid';
 import { Generate } from './Generate';
@@ -294,6 +297,72 @@ export function App() {
     },
     [edit, notify],
   );
+
+  // Strudel drum machine kits, downloaded when picked.
+  const [kits, setKits] = useState<Record<string, Record<string, number>>>({});
+  const [kitProgress, setKitProgress] = useState<KitProgress | null>(null);
+  // Progress messages can arrive after the load has finished; only the running load's count.
+  const kitLoading = useRef<string | null>(null);
+  useEffect(() => {
+    desktop.kitList().then(setKits, () => {});
+    desktop.onKitProgress((p) => {
+      if (p.kit === kitLoading.current) setKitProgress(p);
+    });
+  }, []);
+  const loadKit = useCallback(
+    async (name: string) => {
+      if (name === 'factory') {
+        edit((p) => ({ ...p, tracks: p.tracks.map((t, i) => (FACTORY_SAMPLES[i] ? { ...t, sound: { ...t.sound, sampleId: `factory:${FACTORY_SAMPLES[i].key}` } } : t)) }));
+        notify('Factory kit on every track');
+        return;
+      }
+      if (kitLoading.current) return;
+      kitLoading.current = name;
+      setKitProgress({ kit: name, done: 0, total: 0 });
+      try {
+        const r = await desktop.kitDownload(name);
+        const got: Record<string, KitSample[]> = {};
+        for (const s of r.samples) (got[s.sound] ??= []).push(s);
+        const refs: Record<string, SampleRef> = {};
+        for (const [sound, list] of Object.entries(got)) {
+          list.sort((a, b) => a.index - b.index);
+          list.forEach((s, i) => {
+            const id = `user:${s.file}`;
+            // Kits sometimes contain the same file twice; the first name wins.
+            if (!refs[id]) refs[id] = { id, name: kitSampleName(name, sound, i, list.length), source: 'user', file: s.file, kit: name };
+          });
+        }
+        const plan = kitAssignments(Object.fromEntries(Object.entries(got).map(([k, v]) => [k, v.map((s) => s.file)])), projectRef.current.tracks.length);
+        edit((p) => ({
+          ...p,
+          samples: { ...p.samples, ...refs },
+          tracks: p.tracks.map((t, i) => {
+            const a = plan[i];
+            return a ? { ...t, sound: { ...t.sound, sampleId: `user:${got[a[0]][a[1]].file}` } } : t;
+          }),
+        }));
+        const kept = projectRef.current.tracks.filter((_, i) => !plan[i]).map((t) => t.name);
+        (window as any).__lastKit = { ...r, assigned: plan.filter(Boolean).length, kept };
+        notify(
+          `${kitLabel(name)}${r.downloaded ? ' downloaded' : ''}: on ${plan.filter(Boolean).length} of ${plan.length} tracks` +
+            (kept.length ? ` (no sound for ${kept.join(', ')}, kept as before)` : '') +
+            (r.failed ? `. ${r.failed} file${r.failed === 1 ? '' : 's'} could not be loaded.` : ''),
+        );
+      } catch (e) {
+        notify(`Could not load ${kitLabel(name)}: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : e}`);
+      } finally {
+        kitLoading.current = null;
+        setKitProgress(null);
+      }
+    },
+    [edit, notify],
+  );
+  const currentKit = useMemo(() => {
+    const ids = project.tracks.map((t) => t.sound.sampleId ?? '');
+    if (ids.every((id, i) => !FACTORY_SAMPLES[i] || id === `factory:${FACTORY_SAMPLES[i].key}`)) return 'factory';
+    const used = new Set(ids.map((id) => project.samples[id]?.kit).filter(Boolean));
+    return used.size === 1 ? [...used][0]! : '';
+  }, [project.tracks, project.samples]);
 
   const assignSample = useCallback(
     (trackId: string, sampleId: string) => {
@@ -587,21 +656,7 @@ export function App() {
           <button className={`play ${playing ? 'on' : ''}`} onClick={togglePlay} disabled={!engineReady} title="Play / stop (Space)">
             {playing ? '■ Stop' : '▶ Play'}
           </button>
-          <label className="num">
-            BPM
-            <input
-              type="number"
-              min={20}
-              max={300}
-              step={0.1}
-              value={project.bpm}
-              onKeyDown={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (v >= 20 && v <= 300) edit((p) => ({ ...p, bpm: v }), 'bpm');
-              }}
-            />
-          </label>
+          <NumberField label="BPM" value={project.bpm} min={20} max={300} decimals={1} onCommit={(v) => edit((p) => ({ ...p, bpm: v }))} title="Type a tempo (20–300) and press Enter. Arrow keys: ±1, Shift: ±10" />
           <Slider label="Swing" value={project.swing} min={50} max={75} step={0.5} format={(v) => `${v.toFixed(1)}%`} onChange={(v, k) => edit((p) => ({ ...p, swing: v }), k)} />
           <button className={`toggle ${project.metronome ? 'on' : ''}`} aria-pressed={project.metronome} onClick={() => edit((p) => ({ ...p, metronome: !p.metronome }))} title="Metronome (K)">
             Click
@@ -705,6 +760,10 @@ export function App() {
               onAudition={(id) => audition(id)}
               onAssign={(id) => assignSample(track.id, id)}
               onImport={(files) => importFiles(files)}
+              kits={kits}
+              currentKit={currentKit}
+              kitProgress={kitProgress}
+              onKit={loadKit}
             />
           </aside>
           <section className="center">

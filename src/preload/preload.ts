@@ -14,6 +14,11 @@ const api: DesktopApi = {
   saveStems: (name, files) => ipcRenderer.invoke(CHANNELS.saveStems, name, files),
   appInfo: () => ipcRenderer.invoke(CHANNELS.appInfo),
   showInFolder: (path) => ipcRenderer.invoke(CHANNELS.showInFolder, path),
+  kitList: () => ipcRenderer.invoke(CHANNELS.kitList),
+  kitDownload: (name) => ipcRenderer.invoke(CHANNELS.kitDownload, name),
+  onKitProgress: (cb) => {
+    ipcRenderer.on(CHANNELS.kitProgress, (_e, p) => cb(p));
+  },
   onBeforeClose: (cb) => {
     ipcRenderer.on(CHANNELS.beforeClose, () => cb());
   },

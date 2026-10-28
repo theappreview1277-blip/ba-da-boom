@@ -73,12 +73,12 @@ export async function crashApp(app) {
   killAll(processesFor(app.__profile));
 }
 
-export async function launchApp(profile = newProfile(), extraArgs = []) {
+export async function launchApp(profile = newProfile(), extraArgs = [], env = {}) {
   const exe = process.env.ELECTRON_EXE;
   const args = exe ? [] : ['.'];
   if (process.platform === 'linux') args.push('--no-sandbox');
   args.push(`--user-data-dir=${profile}`, ...extraArgs);
-  const app = await _electron.launch({ executablePath: exe || require('electron'), args });
+  const app = await _electron.launch({ executablePath: exe || require('electron'), args, env: { ...process.env, ...env } });
   app.__profile = profile;
   launched.add(profile);
   // Keep the app's own output, so a failure can show what the app said.

@@ -74,7 +74,7 @@ function readSample(id: string, v: unknown): SampleRef | null {
   const file = str(s.file, '');
   // File names are joined to fixed folders by the main process; refuse anything path-like here too.
   if (!source || !file || /[\\/]|\.\./.test(file)) return null;
-  return { id, name: str(s.name, file), source, file, originalName: typeof s.originalName === 'string' ? s.originalName : undefined };
+  return { id, name: str(s.name, file), source, file, originalName: typeof s.originalName === 'string' ? s.originalName : undefined, kit: typeof s.kit === 'string' ? s.kit : undefined };
 }
 
 /**

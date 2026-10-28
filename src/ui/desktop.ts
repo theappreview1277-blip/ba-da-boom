@@ -57,6 +57,13 @@ const browserApi: DesktopApi = {
     return { version: 'browser', electron: '-', chrome: navigator.userAgent, platform: 'browser', packaged: false, notices: '' };
   },
   async showInFolder() {},
+  async kitList() {
+    return {};
+  },
+  async kitDownload() {
+    throw new Error('Downloading kits needs the desktop app.');
+  },
+  onKitProgress() {},
   onBeforeClose() {},
   async closeReady() {},
   async closePending() {},

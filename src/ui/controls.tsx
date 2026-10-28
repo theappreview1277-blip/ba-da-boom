@@ -1,4 +1,4 @@
-import { useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 let gesture = 0;
 
@@ -49,6 +49,70 @@ export function Meter({ refFn, vertical = true, label }: { refFn: (el: HTMLDivEl
     <div className={`meter ${vertical ? 'v' : 'h'}`} role="meter" aria-label={label}>
       <div className="meter-fill" ref={refFn} />
     </div>
+  );
+}
+
+interface NumberFieldProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  /** Decimal places kept when committing. */
+  decimals?: number;
+  onCommit: (v: number) => void;
+  title?: string;
+}
+
+/**
+ * A number box you can type into freely: the text is a draft until Enter or
+ * leaving the box, then it is clamped to min–max (Escape or junk restores the
+ * value). Arrow keys step by 1, Shift+arrow by 10.
+ */
+export function NumberField({ label, value, min, max, decimals = 0, onCommit, title }: NumberFieldProps) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const cancelled = useRef(false);
+  const shown = draft ?? String(value);
+  useEffect(() => setDraft(null), [value]);
+  const commit = (text: string) => {
+    const v = Number(text.replace(',', '.'));
+    setDraft(null);
+    if (text.trim() === '' || !Number.isFinite(v)) return;
+    const f = 10 ** decimals;
+    const c = Math.min(max, Math.max(min, Math.round(v * f) / f));
+    if (c !== value) onCommit(c);
+  };
+  return (
+    <label className="num" title={title}>
+      {label}
+      <input
+        type="text"
+        inputMode="decimal"
+        aria-label={label}
+        value={shown}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => {
+          if (!cancelled.current) commit(e.target.value);
+          cancelled.current = false;
+        }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') {
+            commit(e.currentTarget.value);
+            e.currentTarget.blur();
+          } else if (e.key === 'Escape') {
+            cancelled.current = true;
+            setDraft(null);
+            e.currentTarget.blur();
+          } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const base = Number(shown);
+            const step = (e.shiftKey ? 10 : 1) * (e.key === 'ArrowUp' ? 1 : -1);
+            commit(String((Number.isFinite(base) ? base : value) + step));
+          }
+        }}
+      />
+    </label>
   );
 }
 

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { Project, SampleRef } from '../model/types';
 import type { SampleStatus } from '../engine/audio/engine';
+import type { KitProgress } from '../main/ipc';
+import { kitLabel } from '../model/kits';
 
 interface Props {
   project: Project;
@@ -9,17 +11,25 @@ interface Props {
   onAudition: (id: string) => void;
   onAssign: (id: string) => void;
   onImport: (files: File[]) => void;
+  /** Strudel drum machine kits: name -> sound -> variants. */
+  kits: Record<string, Record<string, number>>;
+  /** 'factory', a kit name, or '' when the tracks use a mix. */
+  currentKit: string;
+  kitProgress: KitProgress | null;
+  onKit: (name: string) => void;
 }
 
-export function SampleBrowser({ project, selectedSampleId, status, onAudition, onAssign, onImport }: Props) {
+export function SampleBrowser({ project, selectedSampleId, status, onAudition, onAssign, onImport, kits, currentKit, kitProgress, onKit }: Props) {
   const [filter, setFilter] = useState('');
   const groups = useMemo(() => {
     const all = Object.values(project.samples).filter((s) => !s.file.startsWith('metro-'));
     const f = filter.trim().toLowerCase();
     const match = (s: SampleRef) => !f || s.name.toLowerCase().includes(f);
+    const kitNames = [...new Set(all.map((s) => s.kit).filter((k): k is string => !!k))].sort();
     return [
       { title: 'Factory kit', items: all.filter((s) => s.source === 'factory' && match(s)) },
-      { title: 'Imported', items: all.filter((s) => s.source === 'user' && match(s)) },
+      ...kitNames.map((k) => ({ title: kitLabel(k), prefix: `${kitLabel(k)} `, items: all.filter((s) => s.kit === k && match(s)) })).filter((g) => g.items.length),
+      { title: 'Imported', items: all.filter((s) => s.source === 'user' && !s.kit && match(s)) },
     ];
   }, [project.samples, filter]);
 
@@ -32,6 +42,34 @@ export function SampleBrowser({ project, selectedSampleId, status, onAudition, o
         if (e.dataTransfer.files.length) onImport([...e.dataTransfer.files]);
       }}
     >
+      <label className="kit-pick">
+        Kit
+        <select
+          value={kitProgress ? kitProgress.kit : currentKit}
+          disabled={!!kitProgress}
+          aria-label="Kit"
+          onKeyDown={(e) => e.stopPropagation()}
+          onChange={(e) => e.target.value && onKit(e.target.value)}
+          title="Put a whole kit on the tracks: the factory kit or one of Strudel's drum machines."
+        >
+          <option value="factory">Factory</option>
+          {currentKit === '' && !kitProgress && <option value="">Mixed</option>}
+          {Object.keys(kits).length > 0 && (
+            <optgroup label="Strudel drum machines">
+              {Object.entries(kits).map(([name, sounds]) => (
+                <option key={name} value={name}>
+                  {kitLabel(name)} ({Object.values(sounds).reduce((a, b) => a + b, 0)})
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </label>
+      {kitProgress && (
+        <div className="kit-progress" role="status">
+          {kitProgress.total ? `Loading ${kitLabel(kitProgress.kit)}… ${kitProgress.done} / ${kitProgress.total}` : `Loading ${kitLabel(kitProgress.kit)}…`}
+        </div>
+      )}
       <div className="browser-head">
         <input
           type="search"
@@ -82,7 +120,7 @@ export function SampleBrowser({ project, selectedSampleId, status, onAudition, o
                   }}
                   title={s.originalName ?? s.name}
                 >
-                  {s.name}
+                  {'prefix' in g && g.prefix && s.name.startsWith(g.prefix) ? s.name.slice(g.prefix.length) : s.name}
                   {st === 'missing' && <span className="badge warn">missing</span>}
                   {st === 'loading' && <span className="badge">…</span>}
                 </li>

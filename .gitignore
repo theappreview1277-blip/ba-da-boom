@@ -7,3 +7,4 @@ test/e2e/out-*
 test/e2e/timing-result.txt
 build/*.ico
 test-results/
+resources/kits/

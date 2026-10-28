@@ -13,10 +13,11 @@
     "build:electron": "node scripts/build-electron.mjs",
     "build": "npm run build:renderer && npm run build:electron",
     "samples": "node scripts/make-factory-samples.mjs",
+    "kits": "node scripts/fetch-kits.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "start": "npm run build && electron .",
-    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "dist:win": "npm run build && npm run kits && electron-builder --win nsis --x64 --publish never",
     "test:e2e": "node test/e2e/run-all.mjs"
   },
   "devDependencies": {
@@ -58,6 +59,12 @@
       "package.json"
     ],
     "asar": true,
+    "extraResources": [
+      {
+        "from": "resources/kits",
+        "to": "kits"
+      }
+    ],
     "win": {
       "target": [
         {

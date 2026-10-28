@@ -93,6 +93,8 @@ export interface SampleRef {
   file: string;
   /** Where a user sample was originally imported from, for information only. */
   originalName?: string;
+  /** The Strudel drum machine kit a downloaded sample came from (groups it in the browser). */
+  kit?: string;
 }
 
 export interface Project {
