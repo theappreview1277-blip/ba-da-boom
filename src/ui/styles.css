@@ -846,3 +846,21 @@ select,
 .ptrack.muted .ptrack-name {
   opacity: 0.5;
 }
+
+/* --- drag to reorder --- */
+[draggable='true'] {
+  cursor: grab;
+}
+.dragging {
+  opacity: 0.4;
+}
+.drop-before {
+  box-shadow: inset 3px 0 0 var(--accent-2) !important;
+}
+.drop-after {
+  box-shadow: inset -3px 0 0 var(--accent-2) !important;
+}
+button.danger {
+  background: var(--warn);
+  border-color: var(--warn);
+}

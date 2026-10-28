@@ -42,6 +42,8 @@ code editor, resizable panels. See `docs/PLAN.md`.
 | Ctrl+C, Ctrl+V | Copy / paste track lane (add Shift for whole pattern) |
 | Delete, Shift+Delete | Clear lane / pattern |
 | Ctrl+D | Duplicate pattern |
+| Ctrl+Delete | Remove pattern (asks first if it has steps or is in the song) |
+| Alt+Left, Alt+Right | Move the current pattern in the list (or drag the pattern tabs) |
 | Ctrl+S, Ctrl+Shift+S, Ctrl+O | Save, save as, open |
 | Ctrl+E | Export WAV |
 

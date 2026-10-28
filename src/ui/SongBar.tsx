@@ -1,5 +1,6 @@
 import { songBars } from '../model/ops';
 import { MAX_SONG_BARS, type Project } from '../model/types';
+import { reorderProps } from './reorder';
 
 const BAR_CHOICES = [1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 24, 32, 48, MAX_SONG_BARS];
 const barChoices = (current: number) => (BAR_CHOICES.includes(current) ? BAR_CHOICES : [...BAR_CHOICES, current].sort((a, b) => a - b));
@@ -44,7 +45,7 @@ export function SongBar({ project, songMode, playingIndex, onMode, onAdd, onRemo
       <div className="song-entries">
         {project.song.length === 0 && <span className="hint">Song is empty. Add patterns in the order they should play.</span>}
         {project.song.map((e, i) => (
-          <div key={i} className={`song-entry ${i === playingIndex ? 'playing' : ''}`} data-song-index={i}>
+          <div key={i} className={`song-entry ${i === playingIndex ? 'playing' : ''}`} data-song-index={i} title="Drag to reorder" {...reorderProps('application/x-bdb-song', i, onMove)}>
             <button className="name" onClick={() => onSelect(e.patternId)} title="Show this pattern">
               {names.get(e.patternId)}
             </button>

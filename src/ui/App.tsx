@@ -19,6 +19,9 @@ import {
   setStep,
   setTrack,
   setTrackSound,
+  movePattern,
+  patternUsage,
+  removePattern,
   songAdd,
   songBars,
   songMove,
@@ -37,6 +40,7 @@ import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
 import { Perform } from './Perform';
 import { SongBar } from './SongBar';
+import { reorderProps } from './reorder';
 import { useUiStore } from './store';
 
 const AUTOSAVE_MS = 5000;
@@ -46,6 +50,7 @@ const patternName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26
 type Modal =
   | { kind: 'recover'; text: string; missing: string[] }
   | { kind: 'export' }
+  | { kind: 'removePattern'; id: string }
   | { kind: 'about'; notices: string; version: string; platform: string }
   | { kind: 'unsaved'; then: 'close' | 'new' | 'open' }
   | null;
@@ -211,6 +216,28 @@ export function App() {
   useEffect(() => {
     if (songMode && project.song.length === 0) setSongMode(false);
   }, [songMode, project.song.length, setSongMode]);
+
+  const doRemovePattern = useCallback(
+    (id: string) => {
+      const next = removePattern(projectRef.current, id);
+      if (next === projectRef.current) return;
+      edit(() => next);
+      const engine = engineRef.current;
+      // If it was playing or queued, the new current pattern takes over at the next bar.
+      if (engine?.isPlaying && (engine.audiblePatternId === id || engine.queued?.patternId === id)) engine.switchPattern(next.currentPatternId);
+      notify(`Pattern ${projectRef.current.patterns.find((x) => x.id === id)?.name} removed (Ctrl+Z to undo)`);
+    },
+    [edit, notify],
+  );
+  /** Asks first when the pattern has steps or is used in the song; an empty, unused pattern goes at once. */
+  const askRemovePattern = useCallback(
+    (id: string) => {
+      const u = patternUsage(projectRef.current, id);
+      if (u.hits || u.songEntries) setModal({ kind: 'removePattern', id });
+      else doRemovePattern(id);
+    },
+    [doRemovePattern],
+  );
 
   const selectPattern = useCallback(
     (id: string) => {
@@ -467,6 +494,13 @@ export function App() {
       } else if (ctrl && k === 'd') {
         e.preventDefault();
         edit((q) => duplicatePattern(q, q.currentPatternId));
+      } else if (ctrl && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        if (p.patterns.length > 1) askRemovePattern(p.currentPatternId);
+      } else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        const i = p.patterns.findIndex((x) => x.id === p.currentPatternId);
+        edit((q) => movePattern(q, q.currentPatternId, i + (e.key === 'ArrowLeft' ? -1 : 1)));
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (e.shiftKey) edit((q) => clearPattern(q, q.currentPatternId));
@@ -496,7 +530,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [modal, togglePlay, dispatch, save, guarded, edit, notify, selectPattern, audition]);
+  }, [modal, togglePlay, dispatch, save, guarded, edit, notify, selectPattern, audition, askRemovePattern, setSongMode]);
 
   // --- derived ---
   const track = project.tracks.find((t) => t.id === state.selectedTrack) ?? project.tracks[0];
@@ -572,7 +606,8 @@ export function App() {
             key={pt.id}
             className={`pattern-btn ${pt.id === project.currentPatternId ? 'current' : ''} ${pt.id === audiblePattern ? 'playing' : ''} ${pt.id === queuedPattern ? 'queued' : ''}`}
             onClick={() => selectPattern(pt.id)}
-            title={`Pattern ${pt.name}${i < 8 ? ` (${i + 1})` : ''}. While playing, switches at the next bar.`}
+            title={`Pattern ${pt.name}${i < 8 ? ` (${i + 1})` : ''}. While playing, switches at the next bar. Drag to reorder.`}
+            {...reorderProps('application/x-bdb-pattern', i, (from, to) => edit((p) => movePattern(p, p.patterns[from].id, to)))}
           >
             {pt.name}
           </button>
@@ -586,7 +621,8 @@ export function App() {
         </button>
         <span className="sep" />
         <button className="small" onClick={() => edit((p) => duplicatePattern(p, p.currentPatternId))} title="Duplicate pattern (Ctrl+D)">Duplicate</button>
-        <button className="small" onClick={() => edit((p) => clearPattern(p, p.currentPatternId))} title="Clear pattern (Shift+Delete)">Clear</button>
+        <button className="small" onClick={() => edit((p) => clearPattern(p, p.currentPatternId))} title="Clear every step in this pattern (Shift+Delete)">Clear</button>
+        <button className="small" disabled={project.patterns.length <= 1} onClick={() => askRemovePattern(project.currentPatternId)} title="Remove this pattern from the project (Ctrl+Delete)">Remove</button>
         <button className="small" onClick={() => { dispatch({ type: 'copyPattern', pattern }); notify('Pattern copied'); }} title="Copy pattern (Ctrl+Shift+C)">Copy</button>
         <button className="small" disabled={!state.patternClipboard} onClick={() => state.patternClipboard && edit((p) => pastePattern(p, p.currentPatternId, state.patternClipboard!))} title="Paste pattern (Ctrl+Shift+V)">Paste</button>
         <label className="num small">
@@ -749,6 +785,24 @@ export function App() {
           </div>
         </Dialog>
       )}
+
+      {modal?.kind === 'removePattern' && (() => {
+        const pt = project.patterns.find((x) => x.id === modal.id);
+        const u = patternUsage(project, modal.id);
+        return (
+          <Dialog title={`Remove pattern ${pt?.name}?`}>
+            <p>
+              Pattern {pt?.name} has {u.hits} step{u.hits === 1 ? '' : 's'} switched on
+              {u.songEntries ? ` and is used ${u.songEntries} time${u.songEntries === 1 ? '' : 's'} in the song. Those song entries are removed too` : ''}.
+            </p>
+            <p>You can undo this with Ctrl+Z.</p>
+            <div className="actions">
+              <button onClick={() => setModal(null)}>Cancel</button>
+              <button className="primary danger" onClick={() => { setModal(null); doRemovePattern(modal.id); }}>Remove</button>
+            </div>
+          </Dialog>
+        );
+      })()}
 
       {modal?.kind === 'export' && (
         <Dialog title={exportSong && project.song.length ? 'Export song as WAV' : `Export pattern ${pattern.name} as WAV`}>

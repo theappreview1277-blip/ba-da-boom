@@ -161,3 +161,35 @@ export function songSetBars(p: Project, index: number, bars: number): Project {
 
 /** Total length of the song in bars. */
 export const songBars = (p: Project) => p.song.reduce((n, e) => n + e.bars, 0);
+
+// --- pattern list ---
+
+/** Move a pattern to position `to` in the list (pattern keys 1–8 follow the order). */
+export function movePattern(p: Project, patternId: string, to: number): Project {
+  const from = p.patterns.findIndex((x) => x.id === patternId);
+  const dest = Math.max(0, Math.min(p.patterns.length - 1, Math.round(to)));
+  if (from < 0 || from === dest) return p;
+  const patterns = p.patterns.slice();
+  const [pt] = patterns.splice(from, 1);
+  patterns.splice(dest, 0, pt);
+  return { ...p, patterns };
+}
+
+/** How much a removal would lose: hits in the pattern and song entries that use it. */
+export function patternUsage(p: Project, patternId: string) {
+  const pt = p.patterns.find((x) => x.id === patternId);
+  const hits = pt ? Object.values(pt.lanes).reduce((n, l) => n + l.steps.filter((s) => s.on).length, 0) : 0;
+  return { hits, songEntries: p.song.filter((e) => e.patternId === patternId).length };
+}
+
+/**
+ * Remove a pattern and its song entries. The last pattern can't be removed.
+ * The neighbour (the next one, or the previous at the end) becomes current.
+ */
+export function removePattern(p: Project, patternId: string): Project {
+  const i = p.patterns.findIndex((x) => x.id === patternId);
+  if (i < 0 || p.patterns.length <= 1) return p;
+  const patterns = p.patterns.filter((x) => x.id !== patternId);
+  const currentPatternId = p.currentPatternId === patternId ? patterns[Math.min(i, patterns.length - 1)].id : p.currentPatternId;
+  return { ...p, patterns, currentPatternId, song: p.song.filter((e) => e.patternId !== patternId) };
+}
