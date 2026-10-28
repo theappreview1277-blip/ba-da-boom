@@ -43,6 +43,7 @@ const suites = [
   ['./electron-files.mjs', 'Projects, missing samples and recovery'],
   ['./generate.mjs', 'Pattern generators'],
   ['./song.mjs', 'Song mode'],
+  ['./perform.mjs', 'Performance view'],
   ['./timing.mjs', 'Timing and reproducibility'],
 ];
 for (const [file, name] of suites) {

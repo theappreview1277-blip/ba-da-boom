@@ -34,6 +34,7 @@ code editor, resizable panels. See `docs/PLAN.md`.
 | M, S | Mute / solo selected track |
 | A | Audition selected track |
 | K | Metronome |
+| P | Performance view on / off (big pattern pads, mutes, solos) |
 | G | Song mode on / off (play the arrangement) |
 | L | Lock / unlock selected step (generators leave locked steps alone) |
 | Shift+click | Select a step without toggling it |

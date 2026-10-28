@@ -20,7 +20,8 @@ copy/paste/switching, autosave/recovery and missing-sample handling.
 
 ## Milestone 3: performance and polish
 
-* Performance view: large pattern triggers, mutes, queued-switch display
+* Done (in milestone 2): performance view with large pattern pads, mutes/solos with
+  meters, queued-switch display, bar/beat position
 * Resizable panels, display-scaling review at 100/125/150/200 %, full keyboard map
 * Sample browser: waveform preview, folder browsing, favourites
 * Acoustic kit from a CC0 source (candidate: Versilian Community Sample Library, CC0)

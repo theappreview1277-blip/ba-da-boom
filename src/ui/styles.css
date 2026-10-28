@@ -717,3 +717,132 @@ select,
   gap: 16px;
   margin: 8px 0;
 }
+
+/* --- performance view --- */
+.view-toggle.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.workspace.performing {
+  grid-template-columns: 1fr;
+}
+.perform {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 4px 24px;
+}
+.perform-top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.perform-play {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.perform-play.on {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.perform-status {
+  flex: 1;
+}
+.perform-position {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.perform-sub {
+  color: var(--muted);
+}
+.perform-top button.small.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.perform-pads {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+.pad {
+  position: relative;
+  height: 96px;
+  font-size: 30px;
+  font-weight: 700;
+  border-radius: 8px;
+}
+.pad.playing {
+  border-color: var(--ok);
+  box-shadow: inset 0 0 0 2px var(--ok);
+}
+.pad.queued {
+  animation: blink 0.5s steps(2) infinite;
+}
+.pad-key {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pad-state {
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--accent-2);
+}
+.perform-tracks {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+}
+.ptrack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 70px auto auto;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.ptrack .meter {
+  grid-column: 1 / 3;
+  justify-self: center;
+  height: 100%;
+}
+.ptrack-name {
+  grid-column: 1 / 3;
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ptrack button {
+  height: 34px;
+  font-weight: 700;
+}
+.ptrack-mute.on {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: var(--bg);
+}
+.ptrack-solo.on {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: var(--bg);
+}
+.ptrack.muted .ptrack-name {
+  opacity: 0.5;
+}

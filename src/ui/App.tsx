@@ -12,6 +12,7 @@ import {
   duplicatePattern,
   pasteLane,
   pastePattern,
+  patternBars,
   setLane,
   setLaneLength,
   setPatternLength,
@@ -34,6 +35,7 @@ import { Grid } from './Grid';
 import { Generate } from './Generate';
 import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
+import { Perform } from './Perform';
 import { SongBar } from './SongBar';
 import { useUiStore } from './store';
 
@@ -61,6 +63,9 @@ export function App() {
   const [songMode, setSongModeState] = useState(false);
   const songModeRef = useRef(false);
   const [songIndex, setSongIndex] = useState(-1);
+  const [view, setView] = useState<'edit' | 'perform'>('edit');
+  const positionEl = useRef<HTMLDivElement | null>(null);
+  const positionRef = useCallback((el: HTMLDivElement | null) => void (positionEl.current = el), []);
   const [queuedPattern, setQueuedPattern] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
@@ -145,6 +150,13 @@ export function App() {
       }
       setQueuedPattern((prev) => (prev === (engine.queued?.patternId ?? null) ? prev : engine.queued?.patternId ?? null));
       const cycle = engine.patternCycle();
+      if (positionEl.current) {
+        // Bar and beat of the pattern being heard, for the performance view.
+        positionEl.current.textContent =
+          cycle == null || !audible
+            ? '–'
+            : `${p.patterns.find((x) => x.id === audible)?.name ?? ''} · bar ${(Math.floor(cycle) % patternBars(p, audible)) + 1} · beat ${Math.floor((cycle % 1) * 4) + 1}`;
+      }
       const shown = audible === p.currentPatternId ? cycle : null;
       const pat = currentPattern(p);
       for (const t of p.tracks) {
@@ -471,6 +483,8 @@ export function App() {
       } else if (!ctrl && k === 'l') {
         const s = currentLane(p, p.currentPatternId, st.selectedTrack).steps[st.selectedStep];
         if (s) edit((q) => setStep(q, q.currentPatternId, st.selectedTrack, st.selectedStep, { locked: !s.locked }));
+      } else if (!ctrl && k === 'p') {
+        setView((v) => (v === 'perform' ? 'edit' : 'perform'));
       } else if (!ctrl && k === 'g') {
         if (songModeRef.current || p.song.length) setSongMode(!songModeRef.current);
       } else if (!ctrl && k === 'k') {
@@ -543,6 +557,9 @@ export function App() {
           </button>
           <span ref={limitRef} className="limit" title="The safety limiter is reducing gain">LIM</span>
         </div>
+        <button className={`view-toggle ${view === 'perform' ? 'on' : ''}`} aria-pressed={view === 'perform'} onClick={() => setView(view === 'perform' ? 'edit' : 'perform')} title="Performance view: big pattern pads and track mutes (P)">
+          {view === 'perform' ? 'Edit view' : 'Perform'}
+        </button>
         <button className="about" onClick={async () => {
           const info = await desktop.appInfo();
           setModal({ kind: 'about', notices: info.notices, version: info.version, platform: `${info.platform} · Electron ${info.electron}` });
@@ -596,73 +613,94 @@ export function App() {
         onSelect={(id) => dispatch({ type: 'transient', fn: (p) => ({ ...p, currentPatternId: id }) })}
       />
 
-      <main className="workspace">
-        <aside className="left">
-          <SampleBrowser
-            project={project}
-            selectedSampleId={track.sound.sampleId}
-            status={sampleStatus}
-            onAudition={(id) => audition(id)}
-            onAssign={(id) => assignSample(track.id, id)}
-            onImport={(files) => importFiles(files)}
-          />
-        </aside>
-        <section className="center">
-          <Grid
-            project={project}
-            pattern={pattern}
-            selectedTrack={state.selectedTrack}
-            selectedStep={state.selectedStep}
-            sampleStatus={sampleStatus}
-            onToggle={onToggle}
-            onSelect={onSelect}
-            onTrack={onTrack}
-            onLength={onLength}
-            onDropFiles={(id, files) => importFiles(files, id)}
-            onDropSample={assignSample}
-            meterRef={meterRef}
-            rowRef={rowRef}
-          />
-          <Generate
-            trackIndex={trackIndex}
-            laneLength={lane.length}
-            lockedCount={lane.steps.filter((s) => s.locked).length}
-            patternName={pattern.name}
-            onVariation={(opts) => {
-              const next = addVariation(projectRef.current, projectRef.current.currentPatternId, opts);
-              edit(() => next);
-              // While playing, the new pattern comes in at the next bar, like pressing its number.
-              engineRef.current?.switchPattern(next.currentPatternId);
-              notify(`Pattern ${currentPattern(next).name} added`);
-            }}
-            onEuclid={(bits) => {
-              edit((p) => setLane(p, p.currentPatternId, track.id, (l) => applySteps(l, bits)));
-              notify(`Euclidean rhythm written to track ${trackIndex + 1}`);
-            }}
-            onRandomise={(opts, scope) => {
-              const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
-              edit((p) =>
-                ids.reduce((q, id) => setLane(q, q.currentPatternId, id, (l) => randomiseLane(l, { ...opts, salt: p.tracks.findIndex((t) => t.id === id) })), p),
-              );
-              notify(`Randomised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'} (seed ${opts.seed})`);
-            }}
-          />
-        </section>
-        <aside className="right">
-          <Inspector
-            track={track}
-            trackIndex={trackIndex}
-            step={step}
-            stepIndex={state.selectedStep}
-            laneLength={lane.length}
-            sampleName={track.sound.sampleId ? project.samples[track.sound.sampleId]?.name ?? 'Unknown' : 'None'}
-            onStep={(patch, k) => edit((p) => setStep(p, p.currentPatternId, track.id, state.selectedStep, patch), k && `step:${k}`)}
-            onSound={(patch, k) => edit((p) => setTrackSound(p, track.id, patch), k && `sound:${k}`)}
-            onRename={(name) => edit((p) => setTrack(p, track.id, { name }), `rename:${track.id}`)}
-            onAudition={() => track.sound.sampleId && audition(track.sound.sampleId, track.id)}
-          />
-        </aside>
-      </main>
+      {view === 'perform' ? (
+        <main className="workspace performing">
+          <section className="center">
+            <Perform
+              project={project}
+              playing={playing}
+              audiblePattern={audiblePattern}
+              queuedPattern={queuedPattern}
+              songMode={songMode}
+              songIndex={songIndex}
+              meterRef={meterRef}
+              positionRef={positionRef}
+              onPlay={togglePlay}
+              onPattern={selectPattern}
+              onSongMode={setSongMode}
+              onTrack={onTrack}
+            />
+          </section>
+        </main>
+      ) : (
+        <main className="workspace">
+          <aside className="left">
+            <SampleBrowser
+              project={project}
+              selectedSampleId={track.sound.sampleId}
+              status={sampleStatus}
+              onAudition={(id) => audition(id)}
+              onAssign={(id) => assignSample(track.id, id)}
+              onImport={(files) => importFiles(files)}
+            />
+          </aside>
+          <section className="center">
+            <Grid
+              project={project}
+              pattern={pattern}
+              selectedTrack={state.selectedTrack}
+              selectedStep={state.selectedStep}
+              sampleStatus={sampleStatus}
+              onToggle={onToggle}
+              onSelect={onSelect}
+              onTrack={onTrack}
+              onLength={onLength}
+              onDropFiles={(id, files) => importFiles(files, id)}
+              onDropSample={assignSample}
+              meterRef={meterRef}
+              rowRef={rowRef}
+            />
+            <Generate
+              trackIndex={trackIndex}
+              laneLength={lane.length}
+              lockedCount={lane.steps.filter((s) => s.locked).length}
+              patternName={pattern.name}
+              onVariation={(opts) => {
+                const next = addVariation(projectRef.current, projectRef.current.currentPatternId, opts);
+                edit(() => next);
+                // While playing, the new pattern comes in at the next bar, like pressing its number.
+                engineRef.current?.switchPattern(next.currentPatternId);
+                notify(`Pattern ${currentPattern(next).name} added`);
+              }}
+              onEuclid={(bits) => {
+                edit((p) => setLane(p, p.currentPatternId, track.id, (l) => applySteps(l, bits)));
+                notify(`Euclidean rhythm written to track ${trackIndex + 1}`);
+              }}
+              onRandomise={(opts, scope) => {
+                const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
+                edit((p) =>
+                  ids.reduce((q, id) => setLane(q, q.currentPatternId, id, (l) => randomiseLane(l, { ...opts, salt: p.tracks.findIndex((t) => t.id === id) })), p),
+                );
+                notify(`Randomised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'} (seed ${opts.seed})`);
+              }}
+            />
+          </section>
+          <aside className="right">
+            <Inspector
+              track={track}
+              trackIndex={trackIndex}
+              step={step}
+              stepIndex={state.selectedStep}
+              laneLength={lane.length}
+              sampleName={track.sound.sampleId ? project.samples[track.sound.sampleId]?.name ?? 'Unknown' : 'None'}
+              onStep={(patch, k) => edit((p) => setStep(p, p.currentPatternId, track.id, state.selectedStep, patch), k && `step:${k}`)}
+              onSound={(patch, k) => edit((p) => setTrackSound(p, track.id, patch), k && `sound:${k}`)}
+              onRename={(name) => edit((p) => setTrack(p, track.id, { name }), `rename:${track.id}`)}
+              onAudition={() => track.sound.sampleId && audition(track.sound.sampleId, track.id)}
+            />
+          </aside>
+        </main>
+      )}
 
       <footer className="statusbar">
         <span>{state.path ?? 'Not saved yet'}{dirty ? ' · unsaved changes' : ''}</span>
