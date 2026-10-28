@@ -46,6 +46,7 @@ const suites = [
   ['./song.mjs', 'Song mode'],
   ['./export.mjs', 'Stem and MIDI export'],
   ['./perform.mjs', 'Performance view'],
+  ['./scaling.mjs', 'Display scaling'],
   ['./timing.mjs', 'Timing and reproducibility'],
 ];
 for (const [file, name] of suites) {

@@ -577,11 +577,42 @@ select,
 }
 
 @media (max-width: 1250px) {
-  .workspace {
-    grid-template-columns: 190px 1fr 300px;
-  }
   .master .slider {
     min-width: 200px;
+  }
+}
+/* Smaller windows (and 150-200 % display scaling): keep a whole bar of 16 steps visible. */
+@media (max-width: 1320px) {
+  .workspace {
+    grid-template-columns: 170px 1fr 280px;
+  }
+  .grid {
+    --cell: 21px;
+  }
+  .grid-header,
+  .row {
+    grid-template-columns: 200px auto;
+  }
+  .track-head {
+    grid-template-columns: 1fr 22px 22px 34px 4px;
+    gap: 3px;
+    padding: 2px 4px;
+  }
+  .inspector .slider {
+    grid-template-columns: 74px 1fr 60px;
+    gap: 4px;
+    min-width: 0;
+  }
+}
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 130px 1fr 240px;
+  }
+  .browser-head {
+    flex-wrap: wrap;
+  }
+  .browser-head input {
+    flex-basis: 100%;
   }
 }
 

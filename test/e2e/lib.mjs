@@ -73,11 +73,11 @@ export async function crashApp(app) {
   killAll(processesFor(app.__profile));
 }
 
-export async function launchApp(profile = newProfile()) {
+export async function launchApp(profile = newProfile(), extraArgs = []) {
   const exe = process.env.ELECTRON_EXE;
   const args = exe ? [] : ['.'];
   if (process.platform === 'linux') args.push('--no-sandbox');
-  args.push(`--user-data-dir=${profile}`);
+  args.push(`--user-data-dir=${profile}`, ...extraArgs);
   const app = await _electron.launch({ executablePath: exe || require('electron'), args });
   app.__profile = profile;
   launched.add(profile);

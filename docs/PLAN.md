@@ -22,7 +22,9 @@ copy/paste/switching, autosave/recovery and missing-sample handling.
 
 * Done (in milestone 2): performance view with large pattern pads, mutes/solos with
   meters, queued-switch display, bar/beat position
-* Resizable panels, display-scaling review at 100/125/150/200 %, full keyboard map
+* Done: display-scaling review at 100/125/150/200 % (compact layout below 1320 px keeps a
+  whole bar visible; `test/e2e/scaling.mjs` checks it with screenshots)
+* Resizable panels, full keyboard map
 * Done: waveform preview of the selected track's sample (with start/end shown)
 * Sample browser: folder browsing, favourites
 * Acoustic kit from a CC0 source (candidate: Versilian Community Sample Library, CC0)
