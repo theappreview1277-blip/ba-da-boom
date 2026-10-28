@@ -45,6 +45,14 @@ const browserApi: DesktopApi = {
     (window as any).__lastExport = bytes;
     return `${name}.wav`;
   },
+  async saveMidi(name, bytes) {
+    (window as any).__lastMidi = bytes;
+    return `${name}.mid`;
+  },
+  async saveStems(name, files) {
+    (window as any).__lastStems = files;
+    return `${name} stems`;
+  },
   async appInfo() {
     return { version: 'browser', electron: '-', chrome: navigator.userAgent, platform: 'browser', packaged: false, notices: '' };
   },

@@ -23,13 +23,15 @@ copy/paste/switching, autosave/recovery and missing-sample handling.
 * Done (in milestone 2): performance view with large pattern pads, mutes/solos with
   meters, queued-switch display, bar/beat position
 * Resizable panels, display-scaling review at 100/125/150/200 %, full keyboard map
-* Sample browser: waveform preview, folder browsing, favourites
+* Done: waveform preview of the selected track's sample (with start/end shown)
+* Sample browser: folder browsing, favourites
 * Acoustic kit from a CC0 source (candidate: Versilian Community Sample Library, CC0)
 
 ## Milestone 4: export and code
 
-* Stem export (one WAV per track, same offline renderer)
-* MIDI file export (Standard MIDI File writer; probability resolved with the seed)
+* Done: stem export (one WAV per audible track, same offline renderer, equal lengths)
+* Done: MIDI file export (format 1 SMF, PPQ 480, GM drum notes on channel 10;
+  probability, ratchets and microtiming taken from the same Strudel pattern as playback)
 * Optional Strudel code editor (`@strudel/codemirror`, `@strudel/transpiler`):
   a clearly labelled code pattern that plays alongside the grid; grid lanes are
   never overwritten by code

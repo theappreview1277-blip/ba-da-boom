@@ -175,3 +175,39 @@ export function encodeWav24(buf: AudioBuffer): Uint8Array {
   }
   return data;
 }
+
+export interface Stem {
+  trackIndex: number;
+  name: string;
+  buffer: AudioBuffer;
+  events: number;
+  peak: number;
+}
+
+/**
+ * One WAV per audible track (respecting mute and solo), each rendered on its own
+ * through the same chain, with its own delay and reverb sends. Tracks with no
+ * hits in the range are left out. All stems have the same length, so they line up.
+ */
+export async function renderStems(project: Project, opts: ExportOptions, onProgress?: (done: number, total: number) => void): Promise<Stem[]> {
+  const anySolo = project.tracks.some((t) => t.solo);
+  const audible = project.tracks.map((t, i) => ({ t, i })).filter(({ t }) => (anySolo ? t.solo : !t.mute) && t.sound.sampleId && !opts.missingSamples?.has(t.sound.sampleId));
+  const stems: Stem[] = [];
+  let done = 0;
+  for (const { t, i } of audible) {
+    const only: Project = { ...project, tracks: project.tracks.map((x, j) => ({ ...x, mute: j !== i, solo: false })) };
+    const res = await renderPattern(only, opts);
+    onProgress?.(++done, audible.length);
+    if (res.events > 0) stems.push({ trackIndex: i, name: t.name, buffer: res.buffer, events: res.events, peak: res.peak });
+  }
+  const length = Math.max(0, ...stems.map((s) => s.buffer.length));
+  for (const s of stems) s.buffer = padTo(s.buffer, length);
+  return stems;
+}
+
+function padTo(buf: AudioBuffer, length: number): AudioBuffer {
+  if (buf.length === length) return buf;
+  const out = new AudioBuffer({ numberOfChannels: buf.numberOfChannels, length, sampleRate: buf.sampleRate });
+  for (let c = 0; c < buf.numberOfChannels; c++) out.copyToChannel(buf.getChannelData(c), c);
+  return out;
+}

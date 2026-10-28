@@ -7,6 +7,8 @@ export const CHANNELS = {
   autosaveWrite: 'bdb:autosave-write',
   autosaveRecover: 'bdb:autosave-recover',
   saveWav: 'bdb:save-wav',
+  saveMidi: 'bdb:save-midi',
+  saveStems: 'bdb:save-stems',
   appInfo: 'bdb:app-info',
   showInFolder: 'bdb:show-in-folder',
   beforeClose: 'bdb:before-close',
@@ -51,6 +53,9 @@ export interface DesktopApi {
   autosaveWrite(text: string): Promise<void>;
   autosaveRecover(): Promise<OpenResult | null>;
   saveWav(name: string, bytes: Uint8Array): Promise<string | null>;
+  saveMidi(name: string, bytes: Uint8Array): Promise<string | null>;
+  /** Asks for a folder, writes the files into a new "<name> stems" folder there and returns its path. */
+  saveStems(name: string, files: { name: string; bytes: Uint8Array }[]): Promise<string | null>;
   appInfo(): Promise<AppInfo>;
   showInFolder(path: string): Promise<void>;
   onBeforeClose(cb: () => void): void;

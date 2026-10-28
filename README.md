@@ -18,11 +18,13 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
   low/high-pass, drive, delay and reverb sends
 * Track and master meters, clip light, soft-clip safety stage
 * Save/open portable project folders, autosave and crash recovery, missing-sample handling
-* Offline WAV export (24-bit, 44.1 kHz) with effect tails
+* Offline WAV export (24-bit, 44.1 kHz) with effect tails, of a pattern or the whole song
+* Stem export (one 24-bit WAV per audible track, all the same length) and MIDI export
+  (Standard MIDI File, General MIDI drum notes on channel 10)
+* Euclidean rhythms, seeded randomise with step locks, variations, song mode,
+  performance view, waveform preview of the selected track's sample
 
-Not yet built (planned): Euclidean tools, randomisation, variations, pattern
-chaining/arrangement export, performance view, stems and MIDI export, Strudel
-code editor, resizable panels. See `docs/PLAN.md`.
+Not yet built (planned): Strudel code editor, resizable panels, sample browser. See `docs/PLAN.md`.
 
 ## Keyboard
 

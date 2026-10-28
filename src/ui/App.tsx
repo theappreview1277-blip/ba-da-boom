@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from '../engine/audio/engine';
-import { encodeWav24, renderPattern } from '../engine/audio/exportWav';
+import { encodeWav24, renderPattern, renderStems } from '../engine/audio/exportWav';
+import { exportMidi } from '../engine/strudel/midi';
 import { trackControls } from '../engine/strudel/fromModel';
 import { emptyPattern, newProject } from '../model/defaults';
 import {
@@ -419,6 +420,8 @@ export function App() {
   // --- export ---
   const [exportBars, setExportBars] = useState(0);
   const [exportSong, setExportSong] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'wav' | 'stems' | 'midi'>('wav');
+  const [exportProgress, setExportProgress] = useState('');
   const [exporting, setExporting] = useState(false);
   const defaultBars = Math.max(1, Math.ceil(Math.max(...project.tracks.map((t) => pattern.lanes[t.id].length)) / STEPS_PER_BAR));
 
@@ -436,9 +439,32 @@ export function App() {
       const song = exportSong && p.song.length > 0;
       const bars = song ? songBars(p) : exportBars || defaultBars;
       const t0 = performance.now();
-      const res = await renderPattern(p, { patternId: song ? 'song' : p.currentPatternId, bars, missingSamples: missing });
-      const wav = encodeWav24(res.buffer);
+      const patternId = song ? 'song' : p.currentPatternId;
       const name = `${p.name} - ${song ? 'song' : currentPattern(p).name}`.replace(/[\\/:*?"<>|]/g, '_');
+      if (exportFormat === 'midi') {
+        const midi = exportMidi(p, patternId, bars);
+        const path = await desktop.saveMidi(name, midi.bytes);
+        (window as any).__lastExportInfo = { format: 'midi', notes: midi.notes, bytes: midi.bytes.length };
+        if (path) {
+          notify(`Exported ${midi.notes} notes (${bars} bar${bars === 1 ? '' : 's'}) as MIDI → ${path}`);
+          setModal(null);
+        }
+        return;
+      }
+      if (exportFormat === 'stems') {
+        const stems = await renderStems(p, { patternId, bars, missingSamples: missing }, (done, total) => setExportProgress(`${done} / ${total}`));
+        if (!stems.length) throw new Error('No audible track has hits in this range');
+        const files = stems.map((s) => ({ name: `${String(s.trackIndex + 1).padStart(2, '0')} ${s.name}.wav`.replace(/[\\/:*?"<>|]/g, '_'), bytes: encodeWav24(s.buffer) }));
+        const path = await desktop.saveStems(name, files);
+        (window as any).__lastExportInfo = { format: 'stems', stems: stems.map((s) => ({ track: s.trackIndex, events: s.events, frames: s.buffer.length, peak: s.peak })), files: files.map((f) => f.name) };
+        if (path) {
+          notify(`Exported ${stems.length} stems → ${path}`);
+          setModal(null);
+        }
+        return;
+      }
+      const res = await renderPattern(p, { patternId, bars, missingSamples: missing });
+      const wav = encodeWav24(res.buffer);
       const path = await desktop.saveWav(name, wav);
       (window as any).__lastExportInfo = { ...res, buffer: undefined, seconds: res.buffer.duration, ms: performance.now() - t0 };
       if (path) {
@@ -451,8 +477,9 @@ export function App() {
       notify(`Export failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       setExporting(false);
+      setExportProgress('');
     }
-  }, [defaultBars, exportBars, exportSong, notify]);
+  }, [defaultBars, exportBars, exportSong, exportFormat, notify]);
 
   // --- keyboard shortcuts ---
   useEffect(() => {
@@ -806,8 +833,26 @@ export function App() {
       })()}
 
       {modal?.kind === 'export' && (
-        <Dialog title={exportSong && project.song.length ? 'Export song as WAV' : `Export pattern ${pattern.name} as WAV`}>
-          <p>Renders offline at 44.1 kHz, 24-bit stereo, through the same sounds, effects and master chain as playback. Effect tails ring out after the last bar and are trimmed once silent. The metronome is not included.</p>
+        <Dialog title={`Export ${exportSong && project.song.length ? 'song' : `pattern ${pattern.name}`}`}>
+          <div className="export-what" role="radiogroup" aria-label="Format">
+            <label className="check">
+              <input type="radio" name="export-format" checked={exportFormat === 'wav'} onChange={() => setExportFormat('wav')} /> WAV mix
+            </label>
+            <label className="check">
+              <input type="radio" name="export-format" checked={exportFormat === 'stems'} onChange={() => setExportFormat('stems')} /> Stems (one WAV per track)
+            </label>
+            <label className="check">
+              <input type="radio" name="export-format" checked={exportFormat === 'midi'} onChange={() => setExportFormat('midi')} /> MIDI
+            </label>
+          </div>
+          {exportFormat === 'midi' ? (
+            <p>A Standard MIDI File with one track per drum track on channel 10, using General MIDI drum notes. Ratchets, microtiming and swing are included.</p>
+          ) : (
+            <p>
+              Renders offline at 44.1 kHz, 24-bit stereo, through the same sounds, effects and master chain as playback. Effect tails ring out after the last bar and are trimmed once silent. The metronome is not included.
+              {exportFormat === 'stems' && ' Each audible track (mute and solo are respected) gets its own file with its own delay and reverb. All stems have the same length, so they line up in a DAW.'}
+            </p>
+          )}
           <p>Probability uses the project seed ({project.seed}), so the same project always exports the same result, matching playback from the start.</p>
           {project.song.length > 0 && (
             <div className="export-what" role="radiogroup" aria-label="What to export">
@@ -827,7 +872,7 @@ export function App() {
           </label>
           <div className="actions">
             <button onClick={() => setModal(null)} disabled={exporting}>Cancel</button>
-            <button className="primary" onClick={doExport} disabled={exporting}>{exporting ? 'Rendering…' : 'Export'}</button>
+            <button className="primary" onClick={doExport} disabled={exporting}>{exporting ? `Rendering… ${exportProgress}` : 'Export'}</button>
           </div>
         </Dialog>
       )}

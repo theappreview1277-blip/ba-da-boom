@@ -69,7 +69,7 @@ export async function run(t) {
     const wavPath = join(profile, 'song.wav');
     await stubDialogs(app, { savePath: wavPath });
     await win.keyboard.press('Control+e');
-    await win.check('.export-what input[type=radio] >> nth=1');
+    await win.check('input[name=export-what] >> nth=1');
     t.check('export dialog offers the song', (await win.textContent('.modal h2, .modal [role=heading], .modal'))?.includes('Export song'));
     await win.click('.modal button.primary');
     await win.waitForFunction(() => window.__lastExportInfo?.musicalSeconds === 6, null, { timeout: 60000 }).catch(() => {});

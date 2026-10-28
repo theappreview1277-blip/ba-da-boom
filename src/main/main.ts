@@ -274,6 +274,37 @@ function registerIpc() {
     return r.filePath;
   });
 
+  ipcMain.handle(CHANNELS.saveMidi, async (_e, name: unknown, bytes: unknown) => {
+    if (typeof name !== 'string' || !(bytes instanceof Uint8Array)) throw new Error('bad request');
+    const r = await dialog.showSaveDialog(win!, {
+      title: 'Export MIDI',
+      defaultPath: join(app.getPath('music'), `${safeName(name) ?? 'export'}.mid`),
+      filters: [{ name: 'MIDI file', extensions: ['mid'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    await atomicWrite(r.filePath, bytes);
+    return r.filePath;
+  });
+
+  ipcMain.handle(CHANNELS.saveStems, async (_e, name: unknown, files: unknown) => {
+    if (typeof name !== 'string' || !Array.isArray(files) || files.length === 0 || files.length > 64) throw new Error('bad request');
+    const list = files.map((f) => {
+      const n = typeof f?.name === 'string' ? safeName(f.name) : null;
+      if (!n || !n.toLowerCase().endsWith('.wav') || !(f.bytes instanceof Uint8Array)) throw new Error('bad file in request');
+      return { name: n, bytes: f.bytes as Uint8Array };
+    });
+    const r = await dialog.showOpenDialog(win!, {
+      title: 'Choose where to put the stems folder',
+      defaultPath: app.getPath('music'),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const dir = join(r.filePaths[0], `${safeName(name) ?? 'export'} stems`);
+    await fs.mkdir(dir, { recursive: true });
+    for (const f of list) await atomicWrite(join(dir, f.name), f.bytes);
+    return dir;
+  });
+
   ipcMain.handle(CHANNELS.appInfo, async () => {
     let notices = '';
     try {
