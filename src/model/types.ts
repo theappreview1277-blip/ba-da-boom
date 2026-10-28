@@ -3,7 +3,7 @@
 // audio engine or UI should hold musical state that is not represented here.
 
 export const PROJECT_FORMAT = 'badaboom-project';
-export const PROJECT_FORMAT_VERSION = 2;
+export const PROJECT_FORMAT_VERSION = 3;
 
 export const MAX_STEPS = 64;
 export const STEPS_PER_BAR = 16;
@@ -74,6 +74,15 @@ export interface Pattern {
   lanes: Record<string, Lane>;
 }
 
+/** One block of the song arrangement: a pattern played for a number of bars. */
+export interface SongEntry {
+  patternId: string;
+  /** 1..MAX_SONG_BARS. */
+  bars: number;
+}
+
+export const MAX_SONG_BARS = 64;
+
 export type SampleSource = 'factory' | 'user';
 
 export interface SampleRef {
@@ -102,5 +111,9 @@ export interface Project {
   tracks: Track[];
   patterns: Pattern[];
   currentPatternId: string;
+  /** The arrangement, played in order in song mode and exported as one file. */
+  song: SongEntry[];
+  /** Song mode starts again from the top after the last entry. */
+  songLoop: boolean;
   samples: Record<string, SampleRef>;
 }

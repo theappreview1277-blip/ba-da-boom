@@ -57,6 +57,17 @@ gets its own seed derived from the project seed, track and step index. Live
 playback from the start and WAV export therefore make the same choices, and the
 same project always exports the same file (checked in `test/e2e/timing.mjs`).
 
+### Generators and song mode
+
+* Euclidean rhythms come from Strudel's `bjorklund` and `rotate` (the pieces of
+  `euclidRot`) and are written into the grid; randomise and variations use a
+  small seeded PRNG in `src/model/generate.ts`. All of them skip locked steps.
+* The song is one Strudel pattern (`src/engine/strudel/song.ts`): each entry plays
+  its pattern from the pattern's own cycle 0 for `bars` cycles. Song playback
+  goes through the same `LiveSource`, so edits apply at the next step and
+  leaving the song (pressing a pattern key) happens at the next bar. Song export
+  renders the same pattern once, without loop.
+
 ### Master chain
 
 `superdough output -> master gain -> soft clipper (-1 dBFS knee) -> output`. Meters

@@ -88,6 +88,8 @@ export function newProject(): Project {
     tracks,
     patterns: [a, emptyPattern(tracks, 'B'), emptyPattern(tracks, 'C'), emptyPattern(tracks, 'D')],
     currentPatternId: a.id,
+    song: [],
+    songLoop: true,
     samples: factorySampleRefs(),
   };
 }

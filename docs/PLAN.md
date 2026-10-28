@@ -15,7 +15,8 @@ copy/paste/switching, autosave/recovery and missing-sample handling.
   `bjorklund` and `rotate` (identical to `euclidRot`), written into the grid so it stays editable
 * Done: seeded randomisation with strength, density and locked steps (format 2 adds `Step.locked`)
 * Done: variations that keep chosen features (beat skeleton, accents, density), added as a new pattern and queued while playing
-* Pattern chaining and arrangement playback; arrangement WAV export
+* Done: song arrangement (patterns × bars, reorder, loop), song playback with the grid
+  following, leaving the song at the next bar with a pattern key, song WAV export
 
 ## Milestone 3: performance and polish
 

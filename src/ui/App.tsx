@@ -18,6 +18,11 @@ import {
   setStep,
   setTrack,
   setTrackSound,
+  songAdd,
+  songBars,
+  songMove,
+  songRemove,
+  songSetBars,
   toggleStep,
 } from '../model/ops';
 import { applySteps, randomiseLane } from '../model/generate';
@@ -29,6 +34,7 @@ import { Grid } from './Grid';
 import { Generate } from './Generate';
 import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
+import { SongBar } from './SongBar';
 import { useUiStore } from './store';
 
 const AUTOSAVE_MS = 5000;
@@ -52,6 +58,9 @@ export function App() {
   const [, setStatusTick] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [audiblePattern, setAudiblePattern] = useState<string | null>(null);
+  const [songMode, setSongModeState] = useState(false);
+  const songModeRef = useRef(false);
+  const [songIndex, setSongIndex] = useState(-1);
   const [queuedPattern, setQueuedPattern] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
@@ -123,6 +132,17 @@ export function App() {
       const p = projectRef.current;
       const audible = engine.audiblePatternId;
       setAudiblePattern((prev) => (prev === audible ? prev : audible));
+      const song = engine.songState();
+      const idx = song?.index ?? -1;
+      setSongIndex((prev) => (prev === idx ? prev : idx));
+      if (song?.finished) {
+        // End of the song (no loop): stop once the last bar has been heard.
+        void engine.stop().then(() => setPlaying(false));
+      } else if (song && idx >= 0) {
+        // In song mode the grid follows the pattern being heard.
+        const id = p.song[idx]?.patternId;
+        if (id && id !== p.currentPatternId) dispatch({ type: 'transient', fn: (q) => ({ ...q, currentPatternId: id }) });
+      }
       setQueuedPattern((prev) => (prev === (engine.queued?.patternId ?? null) ? prev : engine.queued?.patternId ?? null));
       const cycle = engine.patternCycle();
       const shown = audible === p.currentPatternId ? cycle : null;
@@ -171,10 +191,26 @@ export function App() {
     }
   }, [engineReady]);
 
+  const setSongMode = useCallback((on: boolean) => {
+    songModeRef.current = on;
+    setSongModeState(on);
+    engineRef.current?.setSongMode(on);
+  }, []);
+  useEffect(() => {
+    if (songMode && project.song.length === 0) setSongMode(false);
+  }, [songMode, project.song.length, setSongMode]);
+
   const selectPattern = useCallback(
     (id: string) => {
       dispatch({ type: 'transient', fn: (p) => ({ ...p, currentPatternId: id }) });
-      engineRef.current?.switchPattern(id);
+      const engine = engineRef.current;
+      // Picking a pattern while the song plays leaves song mode at the next bar.
+      if (engine && songModeRef.current && engine.isPlaying) {
+        songModeRef.current = false;
+        setSongModeState(false);
+        engine.songMode = false;
+      }
+      engine?.switchPattern(id);
     },
     [dispatch],
   );
@@ -343,6 +379,7 @@ export function App() {
 
   // --- export ---
   const [exportBars, setExportBars] = useState(0);
+  const [exportSong, setExportSong] = useState(false);
   const [exporting, setExporting] = useState(false);
   const defaultBars = Math.max(1, Math.ceil(Math.max(...project.tracks.map((t) => pattern.lanes[t.id].length)) / STEPS_PER_BAR));
 
@@ -357,11 +394,12 @@ export function App() {
       }
       const p = projectRef.current;
       const missing = new Set(Object.keys(p.samples).filter((id) => engine.sampleStatus(id) !== 'ok'));
-      const bars = exportBars || defaultBars;
+      const song = exportSong && p.song.length > 0;
+      const bars = song ? songBars(p) : exportBars || defaultBars;
       const t0 = performance.now();
-      const res = await renderPattern(p, { patternId: p.currentPatternId, bars, missingSamples: missing });
+      const res = await renderPattern(p, { patternId: song ? 'song' : p.currentPatternId, bars, missingSamples: missing });
       const wav = encodeWav24(res.buffer);
-      const name = `${p.name} - ${currentPattern(p).name}`.replace(/[\\/:*?"<>|]/g, '_');
+      const name = `${p.name} - ${song ? 'song' : currentPattern(p).name}`.replace(/[\\/:*?"<>|]/g, '_');
       const path = await desktop.saveWav(name, wav);
       (window as any).__lastExportInfo = { ...res, buffer: undefined, seconds: res.buffer.duration, ms: performance.now() - t0 };
       if (path) {
@@ -375,13 +413,14 @@ export function App() {
     } finally {
       setExporting(false);
     }
-  }, [defaultBars, exportBars, notify]);
+  }, [defaultBars, exportBars, exportSong, notify]);
 
   // --- keyboard shortcuts ---
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (modal || target.closest('input, select, textarea')) return;
+      // Typing in a field must not trigger shortcuts; checkboxes and buttons are fine.
+      if (modal || target.closest('input:not([type=checkbox]):not([type=radio]), select, textarea')) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const st = stateRef.current;
       const p = projectRef.current;
@@ -432,6 +471,8 @@ export function App() {
       } else if (!ctrl && k === 'l') {
         const s = currentLane(p, p.currentPatternId, st.selectedTrack).steps[st.selectedStep];
         if (s) edit((q) => setStep(q, q.currentPatternId, st.selectedTrack, st.selectedStep, { locked: !s.locked }));
+      } else if (!ctrl && k === 'g') {
+        if (songModeRef.current || p.song.length) setSongMode(!songModeRef.current);
       } else if (!ctrl && k === 'k') {
         edit((q) => ({ ...q, metronome: !q.metronome }));
       } else if (!ctrl && k === 'a') {
@@ -541,6 +582,19 @@ export function App() {
         <span className="sep" />
         <span className="hint">Edit lane: Ctrl+C / Ctrl+V · Delete clears lane</span>
       </nav>
+
+      <SongBar
+        project={project}
+        songMode={songMode}
+        playingIndex={playing ? songIndex : -1}
+        onMode={setSongMode}
+        onAdd={() => edit((p) => songAdd(p, p.currentPatternId))}
+        onRemove={(i) => edit((p) => songRemove(p, i))}
+        onMove={(i, to) => edit((p) => songMove(p, i, to))}
+        onBars={(i, b) => edit((p) => songSetBars(p, i, b), `songbars:${i}`)}
+        onLoop={(loop) => edit((p) => ({ ...p, songLoop: loop }))}
+        onSelect={(id) => dispatch({ type: 'transient', fn: (p) => ({ ...p, currentPatternId: id }) })}
+      />
 
       <main className="workspace">
         <aside className="left">
@@ -659,10 +713,20 @@ export function App() {
       )}
 
       {modal?.kind === 'export' && (
-        <Dialog title={`Export pattern ${pattern.name} as WAV`}>
+        <Dialog title={exportSong && project.song.length ? 'Export song as WAV' : `Export pattern ${pattern.name} as WAV`}>
           <p>Renders offline at 44.1 kHz, 24-bit stereo, through the same sounds, effects and master chain as playback. Effect tails ring out after the last bar and are trimmed once silent. The metronome is not included.</p>
           <p>Probability uses the project seed ({project.seed}), so the same project always exports the same result, matching playback from the start.</p>
-          <label className="num">
+          {project.song.length > 0 && (
+            <div className="export-what" role="radiogroup" aria-label="What to export">
+              <label className="check">
+                <input type="radio" name="export-what" checked={!exportSong} onChange={() => setExportSong(false)} /> Pattern {pattern.name}
+              </label>
+              <label className="check">
+                <input type="radio" name="export-what" checked={exportSong} onChange={() => setExportSong(true)} /> Song ({songBars(project)} bars, played once)
+              </label>
+            </div>
+          )}
+          <label className="num" hidden={exportSong && project.song.length > 0}>
             Bars
             <select value={exportBars || defaultBars} onChange={(e) => setExportBars(Number(e.target.value))}>
               {[1, 2, 4, 8, 16, 32].concat(defaultBars).sort((a, b) => a - b).filter((v, i, a) => a.indexOf(v) === i).map((n) => <option key={n} value={n}>{n}</option>)}

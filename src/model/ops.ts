@@ -1,6 +1,6 @@
 import { emptyLane, emptyStep, newId } from './defaults';
 import { varyLane, type VariationOptions } from './generate';
-import { MAX_STEPS, type Lane, type Pattern, type Project, type Step, type TrackSound } from './types';
+import { MAX_SONG_BARS, MAX_STEPS, STEPS_PER_BAR, type Lane, type Pattern, type Project, type Step, type TrackSound } from './types';
 
 // Pure project edits. Each returns a new Project and never mutates its input,
 // which is what makes undo/redo a simple stack of snapshots.
@@ -125,3 +125,39 @@ export function addVariation(p: Project, patternId: string, opts: Omit<Variation
   );
   return { ...dup, patterns: dup.patterns.map((pt) => (pt.id === id ? { ...pt, name: `${src.name} var ${opts.seed}`, lanes } : pt)) };
 }
+
+// --- song arrangement ---
+
+/** Bars needed to hear every lane of a pattern once (its longest lane). */
+export function patternBars(p: Project, patternId: string): number {
+  const pt = p.patterns.find((x) => x.id === patternId);
+  if (!pt) return 1;
+  const longest = Math.max(...p.tracks.map((t) => pt.lanes[t.id]?.length ?? STEPS_PER_BAR));
+  return Math.max(1, Math.min(MAX_SONG_BARS, Math.ceil(longest / STEPS_PER_BAR)));
+}
+
+export function songAdd(p: Project, patternId: string, at = p.song.length): Project {
+  const song = p.song.slice();
+  song.splice(at, 0, { patternId, bars: patternBars(p, patternId) });
+  return { ...p, song };
+}
+
+export function songRemove(p: Project, index: number): Project {
+  return { ...p, song: p.song.filter((_, i) => i !== index) };
+}
+
+export function songMove(p: Project, index: number, to: number): Project {
+  if (to < 0 || to >= p.song.length || index === to) return p;
+  const song = p.song.slice();
+  const [e] = song.splice(index, 1);
+  song.splice(to, 0, e);
+  return { ...p, song };
+}
+
+export function songSetBars(p: Project, index: number, bars: number): Project {
+  const b = Math.max(1, Math.min(MAX_SONG_BARS, Math.round(bars)));
+  return { ...p, song: p.song.map((e, i) => (i === index ? { ...e, bars: b } : e)) };
+}
+
+/** Total length of the song in bars. */
+export const songBars = (p: Project) => p.song.reduce((n, e) => n + e.bars, 0);

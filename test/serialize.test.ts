@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newProject } from '../src/model/defaults';
 import { setStep } from '../src/model/ops';
 import { parseProject, serializeProject, ProjectFormatError } from '../src/model/serialize';
+import { PROJECT_FORMAT_VERSION } from '../src/model/types';
 
 describe('project files', () => {
   it('round-trips a project exactly', () => {
@@ -46,7 +47,7 @@ describe('format 1 files', () => {
     v1.version = 1;
     for (const pt of v1.patterns) for (const l of Object.values(pt.lanes) as any[]) for (const s of l.steps) delete s.locked;
     const opened = parseProject(JSON.stringify(v1));
-    expect(opened.version).toBe(2);
+    expect(opened.version).toBe(PROJECT_FORMAT_VERSION);
     expect(opened.patterns.every((pt) => Object.values(pt.lanes).every((l) => l.steps.every((s) => s.locked === false)))).toBe(true);
     const back = parseProject(serializeProject(p));
     expect(back.patterns[0].lanes.t2.steps[5]).toMatchObject({ on: true, locked: true });

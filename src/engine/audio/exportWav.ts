@@ -7,6 +7,7 @@
 // matches what plays from the start of live playback.
 
 import { cpsFromBpm, patternFromModel } from '../strudel/fromModel';
+import { songPattern } from '../strudel/song';
 import type { Project } from '../../model/types';
 import { buildMasterChain } from './master';
 import {
@@ -21,7 +22,8 @@ import {
 } from './superdough';
 
 export interface ExportOptions {
-  patternId: string;
+  /** The pattern to render, or 'song' for the whole arrangement (played once, no loop). */
+  patternId: string | 'song';
   bars: number;
   sampleRate?: number;
   /** Extra time rendered after the last bar so reverb, delay and long samples ring out. */
@@ -45,10 +47,14 @@ export async function renderPattern(project: Project, opts: ExportOptions): Prom
   const cps = cpsFromBpm(project.bpm);
   const musicalSeconds = opts.bars / cps;
   const tail = opts.maxTailSeconds ?? 6;
-  const pattern = project.patterns.find((p) => p.id === opts.patternId);
-  if (!pattern) throw new Error('Pattern not found');
   // The metronome is never exported.
-  const strudelPattern = patternFromModel(project, pattern, { missingSamples: opts.missingSamples, metronome: false });
+  const build = (id: string) => {
+    const pattern = project.patterns.find((p) => p.id === id);
+    if (!pattern) throw new Error('Pattern not found');
+    return patternFromModel(project, pattern, { missingSamples: opts.missingSamples, metronome: false });
+  };
+  if (opts.patternId === 'song' && !project.song.length) throw new Error('The song is empty');
+  const strudelPattern = opts.patternId === 'song' ? songPattern(project.song, false, build) : build(opts.patternId);
 
   const liveCtx = getAudioContext();
   const liveController = getSuperdoughAudioController();

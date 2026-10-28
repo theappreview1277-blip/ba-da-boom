@@ -1,6 +1,7 @@
 import { defaultSound, emptyLane, emptyStep } from './defaults';
 import { factorySampleRefs } from './factory';
 import {
+  MAX_SONG_BARS,
   MAX_STEPS,
   PROJECT_FORMAT,
   PROJECT_FORMAT_VERSION,
@@ -8,6 +9,7 @@ import {
   type Pattern,
   type Project,
   type SampleRef,
+  type SongEntry,
   type Step,
   type Track,
   type TrackSound,
@@ -97,6 +99,7 @@ export function parseProject(text: string): Project {
   }
   // Migrations from older formats go here, keyed on `version`.
   // 1 -> 2: steps gained `locked`, which readStep defaults to false.
+  // 2 -> 3: projects gained `song` and `songLoop` (empty song, loop on).
 
   const tracks: Track[] = (Array.isArray(p.tracks) ? p.tracks : []).map((t, i) => {
     const o = obj(t);
@@ -128,6 +131,11 @@ export function parseProject(text: string): Project {
   }
 
   const currentPatternId = str(p.currentPatternId, patterns[0].id);
+  const patternIds = new Set(patterns.map((x) => x.id));
+  const song: SongEntry[] = (Array.isArray(p.song) ? p.song : [])
+    .map((e) => obj(e))
+    .filter((e) => typeof e.patternId === 'string' && patternIds.has(e.patternId))
+    .map((e) => ({ patternId: e.patternId as string, bars: Math.round(clamp(e.bars, 1, MAX_SONG_BARS, 1)) }));
   return {
     format: PROJECT_FORMAT,
     version: PROJECT_FORMAT_VERSION,
@@ -142,6 +150,8 @@ export function parseProject(text: string): Project {
     tracks,
     patterns,
     currentPatternId: patterns.some((x) => x.id === currentPatternId) ? currentPatternId : patterns[0].id,
+    song,
+    songLoop: bool(p.songLoop, true),
     samples,
   };
 }
