@@ -1,7 +1,9 @@
 // Desktop security and services in the real app: sandboxed renderer, the bdb://
 // protocol (no path traversal), CSP blocks the network, WAV import validation.
 import { readFileSync } from 'node:fs';
-import { closeApp, launchApp, runStandalone } from './lib.mjs';
+import { execFileSync } from 'node:child_process';
+import { dirname } from 'node:path';
+import { closeApp, launchApp, runStandalone, usingInstalledApp } from './lib.mjs';
 
 export async function run(t) {
   const { app, win, pageErrors } = await launchApp();
@@ -75,6 +77,14 @@ export async function run(t) {
     const c = await win.evaluate(() => window.__engine.audibleCycle());
     t.check('plays audio (clock advancing after 2 s)', c > 0.5, c?.toFixed(3));
     await win.keyboard.press('Space');
+    if (usingInstalledApp() && process.platform === 'win32') {
+      // The installer's uninstall entry, as Windows "Installed apps" sees it.
+      const out = execFileSync('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall', '/s', '/f', 'Ba-da-boom', '/d'], { encoding: 'utf8' });
+      const key = out.split(/\r?\n/).find((l) => l.startsWith('HKEY_'));
+      const values = key ? execFileSync('reg', ['query', key], { encoding: 'utf8' }) : '';
+      const loc = /InstallLocation\s+REG_SZ\s+(.+)/.exec(values)?.[1]?.trim();
+      t.check('the uninstall entry records where the app is installed', !!loc && loc.toLowerCase() === dirname(process.env.ELECTRON_EXE).toLowerCase(), loc ?? 'no InstallLocation');
+    }
     t.check('no errors in the page', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | ') || 'none');
   } finally {
     await closeApp(app, win).catch(() => app.close());
