@@ -32,6 +32,7 @@ function readStep(v: unknown): Step {
     probability: clamp(s.probability, 0, 1, d.probability),
     micro: clamp(s.micro, -0.5, 0.5, d.micro),
     ratchet: Math.round(clamp(s.ratchet, 1, 8, d.ratchet)),
+    locked: bool(s.locked, d.locked),
   };
 }
 
@@ -95,6 +96,7 @@ export function parseProject(text: string): Project {
     );
   }
   // Migrations from older formats go here, keyed on `version`.
+  // 1 -> 2: steps gained `locked`, which readStep defaults to false.
 
   const tracks: Track[] = (Array.isArray(p.tracks) ? p.tracks : []).map((t, i) => {
     const o = obj(t);
@@ -144,7 +146,7 @@ export function parseProject(text: string): Project {
   };
 }
 
-const isDefaultStep = (s: Step) => !s.on && s.velocity === 0.8 && s.probability === 1 && s.micro === 0 && s.ratchet === 1;
+const isDefaultStep = (s: Step) => !s.on && s.velocity === 0.8 && s.probability === 1 && s.micro === 0 && s.ratchet === 1 && !s.locked;
 
 /** Lanes are stored up to their last non-default step; parseProject fills the rest with defaults. */
 export function serializeProject(project: Project): string {

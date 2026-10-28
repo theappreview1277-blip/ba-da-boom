@@ -34,6 +34,8 @@ code editor, resizable panels. See `docs/PLAN.md`.
 | M, S | Mute / solo selected track |
 | A | Audition selected track |
 | K | Metronome |
+| L | Lock / unlock selected step (generators leave locked steps alone) |
+| Shift+click | Select a step without toggling it |
 | Ctrl+Z, Ctrl+Y | Undo, redo |
 | Ctrl+C, Ctrl+V | Copy / paste track lane (add Shift for whole pattern) |
 | Delete, Shift+Delete | Clear lane / pattern |

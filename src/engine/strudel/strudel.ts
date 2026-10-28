@@ -32,3 +32,8 @@ export const useRNG: (mode: string) => void = c.useRNG;
 export const PatternClass: new (query: (state: any) => StrudelHap[]) => StrudelPattern = c.Pattern;
 export const TimeSpan: any = c.TimeSpan;
 export const Fraction: any = c.Fraction;
+
+/** Strudel's Euclidean rhythm (Bjorklund's algorithm), as booleans. */
+export const bjorklund: (pulses: number, steps: number) => boolean[] = c.bjorklund;
+/** Strudel's array rotation, as used by `euclidRot`. */
+export const rotate: <T>(arr: T[], n: number) => T[] = c.rotate;

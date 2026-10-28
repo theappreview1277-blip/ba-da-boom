@@ -11,7 +11,7 @@ export async function run(t) {
   const projPath = join(work, 'Beat', 'Beat.badaboom');
   const kick = readFileSync('resources/samples/kick-sub.wav');
   const importAndAssign = async (win, name) => {
-    await win.click('.row >> nth=0 >> .track-head');
+    await win.click('.row >> nth=0 >> .track-name');
     await win.setInputFiles('.browser input[type=file]', { name, mimeType: 'audio/wav', buffer: kick });
     const label = name.replace(/\.wav$/, '');
     await win.waitForSelector(`.sample:has-text("${label}")`);

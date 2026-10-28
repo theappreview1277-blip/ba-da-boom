@@ -11,6 +11,7 @@ import {
   duplicatePattern,
   pasteLane,
   pastePattern,
+  setLane,
   setLaneLength,
   setPatternLength,
   setStep,
@@ -18,11 +19,13 @@ import {
   setTrackSound,
   toggleStep,
 } from '../model/ops';
+import { applySteps, randomiseLane } from '../model/generate';
 import { parseProject, serializeProject } from '../model/serialize';
 import { STEPS_PER_BAR, type Project, type SampleRef } from '../model/types';
 import { Slider, db } from './controls';
 import { desktop, inElectron, sampleUrl } from './desktop';
 import { Grid } from './Grid';
+import { Generate } from './Generate';
 import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
 import { useUiStore } from './store';
@@ -425,6 +428,9 @@ export function App() {
       } else if (!ctrl && k === 's') {
         const t = p.tracks.find((x) => x.id === st.selectedTrack);
         if (t) edit((q) => setTrack(q, t.id, { solo: !t.solo }));
+      } else if (!ctrl && k === 'l') {
+        const s = currentLane(p, p.currentPatternId, st.selectedTrack).steps[st.selectedStep];
+        if (s) edit((q) => setStep(q, q.currentPatternId, st.selectedTrack, st.selectedStep, { locked: !s.locked }));
       } else if (!ctrl && k === 'k') {
         edit((q) => ({ ...q, metronome: !q.metronome }));
       } else if (!ctrl && k === 'a') {
@@ -561,6 +567,22 @@ export function App() {
             onDropSample={assignSample}
             meterRef={meterRef}
             rowRef={rowRef}
+          />
+          <Generate
+            trackIndex={trackIndex}
+            laneLength={lane.length}
+            lockedCount={lane.steps.filter((s) => s.locked).length}
+            onEuclid={(bits) => {
+              edit((p) => setLane(p, p.currentPatternId, track.id, (l) => applySteps(l, bits)));
+              notify(`Euclidean rhythm written to track ${trackIndex + 1}`);
+            }}
+            onRandomise={(opts, scope) => {
+              const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
+              edit((p) =>
+                ids.reduce((q, id) => setLane(q, q.currentPatternId, id, (l) => randomiseLane(l, { ...opts, salt: p.tracks.findIndex((t) => t.id === id) })), p),
+              );
+              notify(`Randomised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'} (seed ${opts.seed})`);
+            }}
           />
         </section>
         <aside className="right">

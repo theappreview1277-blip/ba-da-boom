@@ -192,10 +192,10 @@ const Cell = memo(function Cell({
   onToggle: (t: string, s: number) => void;
   onSelect: (t: string, s: number) => void;
 }) {
-  const label = `Step ${index + 1}${step.on ? `, on, velocity ${Math.round(step.velocity * 100)}%` : ', off'}`;
+  const label = `Step ${index + 1}${step.on ? `, on, velocity ${Math.round(step.velocity * 100)}%` : ', off'}${step.locked ? ', locked' : ''}`;
   return (
     <button
-      className={`cell ${step.on ? 'on' : ''} ${inactive ? 'inactive' : ''} ${index % 4 === 0 ? 'beat' : ''} ${focused ? 'focused' : ''}`}
+      className={`cell ${step.on ? 'on' : ''} ${step.locked ? 'locked' : ''} ${inactive ? 'inactive' : ''} ${index % 4 === 0 ? 'beat' : ''} ${focused ? 'focused' : ''}`}
       data-cell={`${trackId}:${index}`}
       data-step={index}
       role="gridcell"

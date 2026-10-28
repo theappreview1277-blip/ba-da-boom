@@ -20,7 +20,7 @@ export function newId(prefix: string): string {
 }
 
 export function emptyStep(): Step {
-  return { on: false, velocity: 0.8, probability: 1, micro: 0, ratchet: 1 };
+  return { on: false, velocity: 0.8, probability: 1, micro: 0, ratchet: 1, locked: false };
 }
 
 export function emptyLane(length = STEPS_PER_BAR): Lane {

@@ -13,7 +13,7 @@ describe('project files', () => {
     expect(serializeProject(p).length).toBeLessThan(20000);
   });
   it('refuses newer formats and non-projects', () => {
-    const text = serializeProject(newProject()).replace('"version":1', '"version":99');
+    const text = serializeProject(newProject()).replace(/"version":\d+/, '"version":99');
     expect(() => parseProject(text)).toThrow(/newer version/);
     expect(() => parseProject('{"hello":1}')).toThrow(ProjectFormatError);
     expect(() => parseProject('not json')).toThrow(/not valid JSON/);
@@ -35,5 +35,20 @@ describe('project files', () => {
     const back = parseProject(serializeProject(p));
     expect(back.tracks[0].sound.sampleId).toBe('user:gone.wav');
     expect(back.samples['user:gone.wav']).toBeDefined();
+  });
+});
+
+describe('format 1 files', () => {
+  it('open with every step unlocked, and locks survive a round trip', () => {
+    const fresh = newProject();
+    const p = setStep(fresh, fresh.patterns[0].id, 't2', 5, { on: true, locked: true });
+    const v1 = JSON.parse(serializeProject(newProject()));
+    v1.version = 1;
+    for (const pt of v1.patterns) for (const l of Object.values(pt.lanes) as any[]) for (const s of l.steps) delete s.locked;
+    const opened = parseProject(JSON.stringify(v1));
+    expect(opened.version).toBe(2);
+    expect(opened.patterns.every((pt) => Object.values(pt.lanes).every((l) => l.steps.every((s) => s.locked === false)))).toBe(true);
+    const back = parseProject(serializeProject(p));
+    expect(back.patterns[0].lanes.t2.steps[5]).toMatchObject({ on: true, locked: true });
   });
 });

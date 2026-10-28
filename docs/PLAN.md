@@ -11,9 +11,9 @@ copy/paste/switching, autosave/recovery and missing-sample handling.
 
 ## Milestone 2: pattern creation
 
-* Euclidean generator per lane (pulses, steps, rotation) using `@strudel/core`'s
-  `euclidRot`, written into the grid so it stays editable
-* Seeded randomisation with strength and locked steps
+* Done: Euclidean generator per lane (hits, steps, rotation) using `@strudel/core`'s
+  `bjorklund` and `rotate` (identical to `euclidRot`), written into the grid so it stays editable
+* Done: seeded randomisation with strength, density and locked steps (format 2 adds `Step.locked`)
 * Variations that keep chosen features (kick/snare skeleton, accents, density)
 * Pattern chaining and arrangement playback; arrangement WAV export
 

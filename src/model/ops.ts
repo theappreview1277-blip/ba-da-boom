@@ -108,3 +108,7 @@ export function redo(h: History): History {
   if (h.future.length === 0) return h;
   return { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1), mergeKey: undefined };
 }
+
+export function setLane(p: Project, patternId: string, trackId: string, fn: (l: Lane) => Lane): Project {
+  return mapLane(p, patternId, trackId, fn);
+}

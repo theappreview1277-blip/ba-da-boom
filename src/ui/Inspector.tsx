@@ -31,6 +31,9 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
         <label className="check">
           <input type="checkbox" checked={step.on} onChange={(e) => onStep({ on: e.target.checked })} /> On
         </label>
+        <label className="check" title="Locked steps are kept when generating (L)">
+          <input type="checkbox" checked={step.locked} onChange={(e) => onStep({ locked: e.target.checked })} /> Locked
+        </label>
         <Slider label="Velocity" value={step.velocity} min={0} max={1} format={pct} onChange={(v, k) => onStep({ velocity: v }, k)} />
         <Slider
           label="Probability"

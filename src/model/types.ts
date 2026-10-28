@@ -3,7 +3,7 @@
 // audio engine or UI should hold musical state that is not represented here.
 
 export const PROJECT_FORMAT = 'badaboom-project';
-export const PROJECT_FORMAT_VERSION = 1;
+export const PROJECT_FORMAT_VERSION = 2;
 
 export const MAX_STEPS = 64;
 export const STEPS_PER_BAR = 16;
@@ -20,6 +20,8 @@ export interface Step {
   micro: number;
   /** Number of evenly spaced hits inside the step, 1..8. */
   ratchet: number;
+  /** Locked steps are left alone by the generators (Euclidean, randomise). */
+  locked: boolean;
 }
 
 export interface Lane {
