@@ -30,7 +30,8 @@ const launched = new Set();
 export function processesFor(profile) {
   try {
     if (process.platform === 'win32') {
-      const ps = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${profile.replace(/'/g, "''")}*' } | ForEach-Object { $_.ProcessId }`;
+      // Excludes this PowerShell itself, whose own command line contains the profile path.
+      const ps = `Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*${profile.replace(/'/g, "''")}*' } | ForEach-Object { $_.ProcessId }`;
       return execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }).split(/\s+/).filter(Boolean).map(Number);
     }
     return execFileSync('pgrep', ['-f', profile], { encoding: 'utf8' }).split(/\s+/).filter(Boolean).map(Number);

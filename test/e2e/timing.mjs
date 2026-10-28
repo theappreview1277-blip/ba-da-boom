@@ -98,14 +98,17 @@ export async function run(t) {
         const bpm1 = 128, bpm2 = 150;
         let p = clickProject(bpm1);
         engine.update(p);
-        // Record the master bus with an AudioWorklet that tags each 128-frame block with
-        // its frame position, so gaps in the capture itself would be detected, not mistaken for timing errors.
-        const src = `class Rec extends AudioWorkletProcessor { process(inputs) { const ch = inputs[0][0]; if (ch) this.port.postMessage({ f: currentFrame, d: ch.slice(0) }); return true; } } registerProcessor('rec', Rec);`;
+        // Record the master bus with an AudioWorklet. process() runs exactly once per
+        // 128-frame render quantum, so a call counter gives each block's true position.
+        // (Chromium's currentFrame occasionally repeats one value and skips the next,
+        // which earlier versions of this test mistook for gaps in the capture.)
+        const src = `class Rec extends AudioWorkletProcessor { constructor() { super(); this.n = 0; } process(inputs) { const ch = inputs[0][0]; this.port.postMessage({ n: this.n++, d: ch ? ch.slice(0) : null }); return true; } } registerProcessor('rec', Rec);`;
         await ac.audioWorklet.addModule('data:text/javascript,' + encodeURIComponent(src));
         const rec = new AudioWorkletNode(ac, 'rec', { numberOfInputs: 1, numberOfOutputs: 0 });
         const blocks = [];
         rec.port.onmessage = (e) => blocks.push(e.data);
         engine['master'].input.connect(rec);
+        const clock0 = ac.currentTime;
         await engine.play();
         const t0 = performance.now();
         let edits = 0, tempoChangedAt = null;
@@ -122,22 +125,15 @@ export async function run(t) {
         await engine.stop();
         await new Promise((r) => setTimeout(r, 300));
         engine['master'].input.disconnect(rec);
-        const first = blocks[0].f;
-        const last = blocks[blocks.length - 1].f + 128;
-        const data = new Float32Array(last - first);
-        let gaps = 0;
-        const gapAt = [];
+        const clockFrames = (ac.currentTime - clock0) * ac.sampleRate;
+        const data = new Float32Array(blocks.length * 128);
+        let outOfOrder = 0;
         for (let i = 0; i < blocks.length; i++) {
-          if (i && blocks[i].f !== blocks[i - 1].f + 128) {
-            gaps++;
-            gapAt.push((blocks[i - 1].f + 128 - first) / ac.sampleRate);
-          }
-          data.set(blocks[i].d, blocks[i].f - first);
+          if (blocks[i].n !== i) outOfOrder++;
+          if (blocks[i].d) data.set(blocks[i].d, blocks[i].n * 128); // null: no active input, i.e. silence
         }
         const on = onsets(data, ac.sampleRate);
-        // Intervals that touch a capture gap can't be measured reliably; skip them.
-        const nearGap = (a, b) => gapAt.some((g) => g >= a - 0.02 && g <= b + 0.02);
-        const iv = on.slice(1).map((t, i) => (nearGap(on[i], t) ? null : t - on[i])).filter((d) => d !== null);
+        const iv = on.slice(1).map((t, i) => t - on[i]);
         const s1 = 60 / bpm1 / 4, s2 = 60 / bpm2 / 4;
         // Each interval must be one step at either tempo; one transition interval may sit in between.
         const bad = iv.filter((d) => Math.abs(d - s1) > 0.0005 && Math.abs(d - s2) > 0.0005);
@@ -145,8 +141,9 @@ export async function run(t) {
         const dev2 = iv.filter((d) => Math.abs(d - s2) <= 0.0005).map((d) => Math.abs(d - s2) * ac.sampleRate);
         report.realtime = {
           seconds: LONG,
-          captureGaps: gaps,
-          intervalsSkippedNearGaps: on.length - 1 - iv.length,
+          recordedFrames: blocks.length * 128,
+          clockFrames: Math.round(clockFrames),
+          blocksOutOfOrder: outOfOrder,
           sampleRate: ac.sampleRate,
           baseLatencyMs: +(ac.baseLatency * 1000).toFixed(1),
           outputLatencyMs: +((ac.outputLatency || 0) * 1000).toFixed(1),
@@ -162,10 +159,9 @@ export async function run(t) {
       return report.realtime;
     }, [LONG, EDITS]);
     const rt = r.realtime;
-    const intervals = rt.onsets - 1;
-    const measured = intervals - rt.intervalsSkippedNearGaps;
     t.check(`real time: ${rt.seconds} s of playback produced clicks`, rt.onsets > rt.seconds * 6, `${rt.onsets} clicks, ${rt.edits} edits during playback`);
-    t.check('real time: at least 90% of intervals measurable (recorder gaps excluded)', measured >= intervals * 0.9, `${measured}/${intervals} measured, ${rt.captureGaps} recorder gaps`);
+    // The recording must cover the whole run: every render quantum captured, in order.
+    t.check('real time: recorder captured every audio block, in order', rt.blocksOutOfOrder === 0 && Math.abs(rt.recordedFrames - rt.clockFrames) <= rt.sampleRate * 0.05, `${rt.recordedFrames} frames recorded, audio clock advanced ${rt.clockFrames}`);
     t.check('real time: both tempos heard (128 then 150 BPM)', rt.intervalsAtTempo1 > 0 && rt.intervalsAtTempo2 > 0, `${rt.intervalsAtTempo1} at 128, ${rt.intervalsAtTempo2} at 150`);
     t.check('real time: no dropped, doubled or late clicks (only the tempo-change interval may differ)', rt.offGridIntervals.length <= 1, rt.offGridIntervals.length ? `off-grid ms: ${rt.offGridIntervals.join(', ')}` : 'none');
     t.check('real time: timing jitter at most 0.5 ms', rt.maxJitterSamples <= rt.sampleRate * 0.0005, `max ${rt.maxJitterSamples.toFixed(1)} samples @ ${rt.sampleRate} Hz`);
