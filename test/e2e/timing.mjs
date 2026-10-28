@@ -14,7 +14,14 @@ const exe = process.env.ELECTRON_EXE;
 let browser, page, electronApp;
 if (exe) {
   const { _electron } = createRequire(import.meta.url)('playwright');
-  electronApp = await _electron.launch({ executablePath: exe, args: process.env.ELECTRON_ARGS ? process.env.ELECTRON_ARGS.split(' ') : [] });
+  // A separate profile, so the test also runs while the app is already open
+  // (the app allows one instance per profile) and leaves the user's autosave alone.
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const profile = mkdtempSync(join(tmpdir(), 'bdb-timing-'));
+  const extra = process.env.ELECTRON_ARGS ? process.env.ELECTRON_ARGS.split(' ') : [];
+  electronApp = await _electron.launch({ executablePath: exe, args: [...extra, `--user-data-dir=${profile}`] });
   page = await electronApp.firstWindow();
 } else {
   browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
