@@ -144,6 +144,15 @@ export interface BuildOptions {
   metronome?: boolean;
 }
 
+/**
+ * Every hap gets its own copy of its controls. superdough writes the note length
+ * into the value it is given (`value.duration = seconds`), and Strudel's
+ * hap.duration reads value.duration back, so with one shared controls object
+ * each bar's notes came out longer than the last (in seconds read as cycles):
+ * synth notes and envelopes soon held forever and piled up until the audio stopped.
+ */
+const ownValues = (p: StrudelPattern) => p.withValue((v: Record<string, unknown>) => ({ ...v }));
+
 /** The full Strudel pattern for one project pattern, starting at cycle 0. */
 export function patternFromModel(project: Project, pattern: Pattern, opts: BuildOptions = {}): StrudelPattern {
   const parts: StrudelPattern[] = [];
@@ -154,15 +163,15 @@ export function patternFromModel(project: Project, pattern: Pattern, opts: Build
     if (lane) parts.push(lanePattern(lane, track, i, project));
   });
   if (opts.metronome) parts.push(metronomePattern());
-  return parts.length ? stack(...parts) : silence;
+  return parts.length ? ownValues(stack(...parts)) : silence;
 }
 
 export function metronomePattern(): StrudelPattern {
   const click = (key: string, gain: number) => pure({ s: soundKey(`factory:${key}`), gain, orbit: METRONOME_ORBIT });
-  return stack(
+  return ownValues(stack(
     click('metro-hi', 0.6).compress(0, 1 / 4),
     ...[1, 2, 3].map((beat) => click('metro-lo', 0.45).compress(beat / 4, (beat + 1) / 4)),
-  );
+  ));
 }
 
 /** Readable Strudel code for a lane, shown in the code view. Not evaluated by the grid. */

@@ -13,6 +13,7 @@ export interface StrudelPattern {
   early(cycles: number): StrudelPattern;
   slow(factor: number): StrudelPattern;
   fast(factor: number): StrudelPattern;
+  withValue(f: (v: any) => unknown): StrudelPattern;
 }
 
 export interface StrudelHap {

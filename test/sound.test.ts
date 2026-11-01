@@ -69,3 +69,25 @@ describe('project files with the new sound settings', () => {
     expect([s.wave, s.filterType, s.vowel, s.crush, s.coarse]).toEqual(['sawtooth', '12db', '', 16, 1]);
   });
 });
+
+describe('note lengths stay the same bar after bar', () => {
+  it('superdough writing value.duration back does not lengthen later notes', async () => {
+    const { patternFromModel, cpsFromBpm } = await import('../src/engine/strudel/fromModel');
+    const p = newProject();
+    p.metronome = true;
+    p.tracks[0].sound = { ...p.tracks[0].sound, source: 'synth', wave: 'supersaw' };
+    const pat = patternFromModel(p, p.patterns[0], { metronome: true });
+    const cps = cpsFromBpm(p.bpm);
+    const lengths: number[] = [];
+    for (let bar = 0; bar < 8; bar++) {
+      for (const hap of pat.queryArc(bar, bar + 1)) {
+        if (!hap.hasOnset()) continue;
+        if (hap.value.orbit === 1) lengths.push(hap.duration.valueOf());
+        // What superdough does with every value it plays:
+        hap.value.duration = hap.duration.valueOf() / cps;
+      }
+    }
+    expect(lengths.length).toBeGreaterThan(8);
+    expect(new Set(lengths)).toEqual(new Set([lengths[0]]));
+  });
+});

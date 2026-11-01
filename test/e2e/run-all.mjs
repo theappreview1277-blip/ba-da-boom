@@ -47,6 +47,7 @@ const suites = [
   ['./kits.mjs', 'Tempo entry and kits'],
   ['./library.mjs', 'Sample folders, favourites and panels'],
   ['./sounds.mjs', 'Synths and effects'],
+  ['./longplay.mjs', 'Long playback'],
   ['./export.mjs', 'Stem and MIDI export'],
   ['./perform.mjs', 'Performance view'],
   ['./scaling.mjs', 'Display scaling'],
