@@ -78,6 +78,26 @@ export class AudioEngine {
       onError: (e: unknown) => this.onError?.(String(e)),
     });
     await this.scheduler.setPattern(this.live.pattern, false);
+    // Open the audio device now, not on the first press of Play: on some Windows
+    // machines the audio clock takes about a second to start moving.
+    void this.clockRunning();
+  }
+
+  private warming: Promise<void> | null = null;
+
+  /** Resolves once the audio clock is actually moving (or after 3 s, whatever happens). */
+  clockRunning(): Promise<void> {
+    if (!this.warming) {
+      this.warming = (async () => {
+        if (this.ac.state !== 'running') await this.ac.resume().catch(() => {});
+        const t0 = this.ac.currentTime;
+        const until = performance.now() + 3000;
+        while (this.ac.currentTime <= t0 && performance.now() < until) await new Promise((r) => setTimeout(r, 10));
+      })();
+      // A later suspend (e.g. the system audio device changed) needs a fresh check.
+      this.ac.addEventListener('statechange', () => (this.warming = null), { once: true });
+    }
+    return this.warming;
   }
 
   /** Route superdough's output through our master chain. Needed again after a controller reset. */
@@ -258,7 +278,7 @@ export class AudioEngine {
   async play() {
     if (!this.project) return;
     if (this.stopping) await this.stopping;
-    if (this.ac.state !== 'running') await this.ac.resume();
+    await this.clockRunning();
     if (this.isPlaying) return;
     this.playingPatternId = this.project.currentPatternId;
     this.queued = null;

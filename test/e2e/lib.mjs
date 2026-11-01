@@ -101,6 +101,10 @@ export async function launchApp(profile = newProfile(), extraArgs = [], env = {}
     null,
     { timeout: 30000 },
   );
+  // The app opens the audio device at startup (on some Windows machines the
+  // audio clock takes about a second to start). Like a person, tests start once
+  // the app is ready; if the clock never starts, launching fails.
+  await win.waitForFunction(() => window.__engine.ac.currentTime > 0, null, { timeout: 10000 });
   return { app, win, profile, pageErrors };
 }
 
