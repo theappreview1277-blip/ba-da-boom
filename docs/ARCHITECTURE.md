@@ -67,6 +67,11 @@ same project always exports the same file (checked in `test/e2e/timing.mjs`).
 * Euclidean rhythms come from Strudel's `bjorklund` and `rotate` (the pieces of
   `euclidRot`) and are written into the grid; randomise and variations use a
   small seeded PRNG in `src/model/generate.ts`. All of them skip locked steps.
+* Beat intelligence (`src/model/rhythm.ts`, library in `src/model/styles.ts`) works the same way:
+  seeded, written into the grid, locked steps kept. Each track's role comes from its name or sample
+  name. Style recognition compares the kick, backbeat and hats (folded onto one bar) with every
+  pattern's parts by weighted Jaccard similarity, plus tempo closeness. Humanise sets microtiming
+  (it does not add to it), so applying it again with the same settings gives the same timing.
 * The song is one Strudel pattern (`src/engine/strudel/song.ts`): each entry plays
   its pattern from the pattern's own cycle 0 for `bars` cycles. Song playback
   goes through the same `LiveSource`, so edits apply at the next step and

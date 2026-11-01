@@ -29,6 +29,13 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
   (Standard MIDI File, General MIDI drum notes on channel 10)
 * Euclidean rhythms, seeded randomise with step locks, variations, song mode,
   performance view, waveform preview of the selected track's sample
+* Beat intelligence: 54 drum patterns in 16 kinds of music (drum & bass two-step, double kick, halftime,
+  four-on-the-floor and break-style patterns; jungle, house, techno, hip-hop, trap and drill, R&B, pop and
+  disco, funk, rock and metal, reggae and dancehall, African, Latin, jazz and blues, UK garage and dubstep,
+  breakbeat), with complexity, "Sounds like" style recognition, "Complete my beat" for a beat you started,
+  fills (snare roll, tom run, build, drop out) as a new queued pattern or in place, and humanise with
+  natural, laid back, pushed and tight feels. Break-style patterns are rhythms written for the grid and
+  played with your kit; no recordings are included
 * Sample folders: add your own folders of WAVs to the sample list (remembered), favourites (☆),
   resizable side panels (drag the edges, double-click to reset)
 

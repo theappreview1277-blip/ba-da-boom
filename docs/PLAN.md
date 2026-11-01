@@ -18,6 +18,14 @@ copy/paste/switching, autosave/recovery and missing-sample handling.
 * Done: song arrangement (patterns × bars, reorder, loop), song playback with the grid
   following, leaving the song at the next bar with a pattern key, song WAV export
 
+## Beat intelligence (done)
+
+* Beat library (`src/model/styles.ts`): 54 step patterns in 16 kinds of music, each with alternatives
+  picked by seed and optional extra hits, ghost notes, rolls and triplet-swung 8ths controlled by complexity
+* Track roles read from track and sample names (kick, snare, hats, toms…), with stand-ins when a kit lacks a sound
+* Style recognition ("Sounds like"), "Complete my beat" (only empty tracks are written), fills and humanise
+  (`src/model/rhythm.ts`). No project format change: results are ordinary steps
+
 ## Milestone 3: performance and polish
 
 * Done (in milestone 2): performance view with large pattern pads, mutes/solos with
