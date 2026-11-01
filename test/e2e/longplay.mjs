@@ -12,13 +12,23 @@ export async function run(t) {
   const { app, win, pageErrors } = await launchApp();
   try {
     await win.evaluate(() => {
-      // Record every supersaw voice superdough creates, to read its start and end.
-      window.__saws = [];
+      // Record every supersaw note's length. superdough re-uses voices, so a
+      // note is counted when its voice is started ('initialize', sent after
+      // its begin and end are set), not when a voice is created.
+      window.__sawLengths = [];
       const Orig = window.AudioWorkletNode;
       window.AudioWorkletNode = class extends Orig {
         constructor(ac, name, opts) {
           super(ac, name, opts);
-          if (name === 'supersaw-oscillator') window.__saws.push(this);
+          if (name !== 'supersaw-oscillator') return;
+          const post = this.port.postMessage.bind(this.port);
+          this.port.postMessage = (msg, ...rest) => {
+            if (msg?.type === 'initialize') {
+              const begin = this.parameters.get('begin').value;
+              if (begin >= 0) window.__sawLengths.push(this.parameters.get('end').value - begin);
+            }
+            return post(msg, ...rest);
+          };
         }
       };
       const e = window.__engine;
@@ -49,14 +59,12 @@ export async function run(t) {
     );
     await win.keyboard.press('Space');
 
-    const lengths = await win.evaluate(() =>
-      window.__saws.filter((n) => n.parameters.get('begin').value >= 0).map((n) => n.parameters.get('end').value - n.parameters.get('begin').value),
-    );
+    const lengths = await win.evaluate(() => window.__sawLengths);
     const first = lengths[0];
     const worst = lengths.reduce((m, l) => Math.max(m, Math.abs(l - first)), 0);
     t.check(
       `synth notes keep the same length for ${SECONDS} s of playback`,
-      lengths.length > 20 && worst < 0.01,
+      lengths.length >= SECONDS && worst < 0.01,
       `${lengths.length} notes, first ${first?.toFixed(3)} s, largest difference ${worst.toFixed(3)} s`,
     );
     const a = clock[Math.max(0, clock.length - 7)];
