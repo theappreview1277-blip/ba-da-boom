@@ -40,6 +40,8 @@ import { NumberField, Slider, db } from './controls';
 import { desktop, inElectron, sampleUrl } from './desktop';
 import { Grid } from './Grid';
 import { Generate } from './Generate';
+import { SmartBeats } from './SmartBeats';
+import { addFillPattern, completeBeat, fillPattern, generateBeat, humanise, resolveFillType, styleById, FILL_TYPES } from '../model/rhythm';
 import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
 import { Splitter } from './Splitter';
@@ -908,6 +910,43 @@ export function App() {
               onDropFolderFile={assignFolderFile}
               meterRef={meterRef}
               rowRef={rowRef}
+            />
+            <SmartBeats
+              project={project}
+              pattern={pattern}
+              trackIndex={trackIndex}
+              onBeat={(opts) => {
+                edit((p) => generateBeat(p, opts));
+                const s = styleById(opts.styleId);
+                notify(`${s.genre}: ${s.name} beat written (seed ${opts.seed})`);
+              }}
+              onComplete={(opts) => {
+                const { project: next, filled } = completeBeat(projectRef.current, opts);
+                if (!filled.length) {
+                  notify('Every track this pattern uses already has hits');
+                  return;
+                }
+                edit(() => next);
+                notify(`Completed with ${styleById(opts.styleId).name}: ${filled.map((id) => next.tracks.find((t) => t.id === id)?.name).join(', ')}`);
+              }}
+              onFill={(opts, asNew) => {
+                const kind = FILL_TYPES.find((f) => f.id === resolveFillType(projectRef.current, opts))?.name ?? 'Fill';
+                if (asNew) {
+                  const next = addFillPattern(projectRef.current, opts);
+                  edit(() => next);
+                  // While playing, the fill pattern comes in at the next bar, like pressing its number.
+                  engineRef.current?.switchPattern(next.currentPatternId);
+                  notify(`Pattern ${currentPattern(next).name} added (${kind.toLowerCase()})`);
+                } else {
+                  edit((p) => fillPattern(p, opts));
+                  notify(`${kind} written into the end of pattern ${pattern.name}`);
+                }
+              }}
+              onHumanise={(opts, scope) => {
+                const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
+                edit((p) => humanise(p, ids, opts));
+                notify(`Humanised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'}`);
+              }}
             />
             <Generate
               trackIndex={trackIndex}
