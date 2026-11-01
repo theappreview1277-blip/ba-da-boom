@@ -64,6 +64,22 @@ const browserApi: DesktopApi = {
     throw new Error('Downloading kits needs the desktop app.');
   },
   onKitProgress() {},
+  async settingsGet() {
+    return { folders: [], favourites: [], layout: {} };
+  },
+  async settingsSet() {
+    return { folders: [], favourites: [], layout: {} };
+  },
+  async folderAdd() {
+    return null;
+  },
+  async folderRemove() {},
+  async folderList() {
+    return [];
+  },
+  async folderRead() {
+    throw new Error('Sample folders need the desktop app.');
+  },
   onBeforeClose() {},
   async closeReady() {},
   async closePending() {},

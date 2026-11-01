@@ -26,7 +26,10 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
 * Euclidean rhythms, seeded randomise with step locks, variations, song mode,
   performance view, waveform preview of the selected track's sample
 
-Not yet built (planned): Strudel code editor, resizable panels, sample browser. See `docs/PLAN.md`.
+* Sample folders: add your own folders of WAVs to the sample list (remembered), favourites (☆),
+  resizable side panels (drag the edges, double-click to reset)
+
+Not yet built (planned): Strudel code editor. See `docs/PLAN.md`.
 
 ## Keyboard
 

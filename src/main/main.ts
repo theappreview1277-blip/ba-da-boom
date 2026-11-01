@@ -8,12 +8,14 @@ import { existsSync, promises as fs } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { downloadKit, kitList } from './kits';
-import { CHANNELS, type OpenResult, type SaveRequest, type SaveResult } from './ipc';
+import { cleanSettings, readSettings, resolveInFolder, scanFolder } from './library';
+import { CHANNELS, type OpenResult, type SaveRequest, type SaveResult, type Settings } from './ipc';
 
 const isDev = process.env.BDB_DEV === '1';
 const RENDERER_DIR = join(__dirname, '..', 'dist');
 const userDir = () => app.getPath('userData');
 const POOL_DIR = () => join(userDir(), 'sample-pool');
+const SETTINGS_FILE = () => join(userDir(), 'settings.json');
 const AUTOSAVE_FILE = () => join(userDir(), 'autosave', 'autosave.badaboom');
 const SESSION_LOCK = () => join(userDir(), 'autosave', 'session.lock');
 const PROJECT_EXT = 'badaboom';
@@ -153,9 +155,11 @@ function createWindow() {
   });
 }
 
+let tmpCounter = 0;
 async function atomicWrite(path: string, data: string | Uint8Array) {
   await fs.mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp-${process.pid}`;
+  // Unique per write: two writes of the same file can run at once.
+  const tmp = `${path}.tmp-${process.pid}-${++tmpCounter}`;
   await fs.writeFile(tmp, data);
   await fs.rename(tmp, path);
 }
@@ -168,10 +172,18 @@ async function poolHas(file: string) {
   return existsSync(join(POOL_DIR(), file));
 }
 
-/** Copy a WAV into the pool under a content hash name. */
+/** Copy a WAV into the pool under a content hash name. The same file added twice at once is written once. */
+const poolWrites = new Map<string, Promise<void>>();
 async function addToPool(buf: Buffer): Promise<string> {
   const file = createHash('sha256').update(buf).digest('hex').slice(0, 32) + '.wav';
-  if (!(await poolHas(file))) await atomicWrite(join(POOL_DIR(), file), buf);
+  let pending = poolWrites.get(file);
+  if (!pending) {
+    pending = (async () => {
+      if (!(await poolHas(file))) await atomicWrite(join(POOL_DIR(), file), buf);
+    })().finally(() => poolWrites.delete(file));
+    poolWrites.set(file, pending);
+  }
+  await pending;
   return file;
 }
 
@@ -333,6 +345,45 @@ function registerIpc() {
       progress: (p) => e.sender.send(CHANNELS.kitProgress, p),
     }),
   );
+
+  // Settings are read and written one change at a time, so quick changes can't overwrite each other.
+  let settingsQueue: Promise<unknown> = Promise.resolve();
+  const updateSettings = (fn: (s: Settings) => Settings) => {
+    const next = settingsQueue.then(async () => {
+      const s = cleanSettings(fn(await readSettings(SETTINGS_FILE())));
+      await atomicWrite(SETTINGS_FILE(), JSON.stringify(s, null, 2));
+      return s;
+    });
+    settingsQueue = next.catch(() => {});
+    return next;
+  };
+  ipcMain.handle(CHANNELS.settingsGet, () => readSettings(SETTINGS_FILE()));
+  ipcMain.handle(CHANNELS.settingsSet, (_e, patch: any) =>
+    updateSettings((s) => ({
+      ...s,
+      ...(Array.isArray(patch?.favourites) ? { favourites: patch.favourites } : {}),
+      ...(patch?.layout && typeof patch.layout === 'object' ? { layout: { left: patch.layout.left, right: patch.layout.right } } : {}),
+    })),
+  );
+  ipcMain.handle(CHANNELS.folderAdd, async () => {
+    const r = await dialog.showOpenDialog(win!, { title: 'Add a sample folder', defaultPath: app.getPath('music'), properties: ['openDirectory'] });
+    const path = r.canceled ? null : r.filePaths[0];
+    if (!path) return null;
+    await updateSettings((s) => ({ ...s, folders: s.folders.includes(path) ? s.folders : [...s.folders, path] }));
+    return scanFolder(path);
+  });
+  ipcMain.handle(CHANNELS.folderRemove, (_e, path: unknown) => updateSettings((s) => ({ ...s, folders: s.folders.filter((f) => f !== path) })).then(() => {}));
+  ipcMain.handle(CHANNELS.folderList, async () => Promise.all((await readSettings(SETTINGS_FILE())).folders.map(scanFolder)));
+  ipcMain.handle(CHANNELS.folderRead, async (_e, folder: unknown, file: unknown) => {
+    const full = resolveInFolder((await readSettings(SETTINGS_FILE())).folders, folder, file);
+    if (!full) throw new Error('That file is not in one of your sample folders.');
+    const stat = await fs.stat(full).catch(() => null);
+    if (!stat?.isFile()) throw new Error('The file is no longer there.');
+    if (stat.size > MAX_SAMPLE_BYTES) throw new Error('Sample is larger than 200 MB.');
+    const buf = await fs.readFile(full);
+    if (!isWav(buf)) throw new Error(`${basename(full)} is not a WAV file.`);
+    return { file: await addToPool(buf) };
+  });
 
   ipcMain.handle(CHANNELS.showInFolder, (_e, p: unknown) => {
     if (typeof p === 'string' && existsSync(p)) shell.showItemInFolder(p);

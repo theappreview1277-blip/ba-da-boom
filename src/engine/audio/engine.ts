@@ -101,8 +101,20 @@ export class AudioEngine {
 
   /** Register and preload every sample the project references. Returns when all have settled. */
   async loadSamples(project: Project) {
+    await this.registerSamples([...Object.values(project.samples), ...METRONOME_SAMPLES]);
+    // Tracks whose samples just became available can now be heard.
+    if (this.project) this.update(this.project);
+  }
+
+  /** Register samples that are not (yet) in the project, e.g. to audition a file from a folder. */
+  async previewSample(ref: SampleRef) {
+    await this.registerSamples([ref]);
+    return this.status.get(ref.id) === 'ok';
+  }
+
+  private async registerSamples(refs: SampleRef[]) {
     const jobs: Promise<void>[] = [];
-    for (const ref of [...Object.values(project.samples), ...METRONOME_SAMPLES]) {
+    for (const ref of refs) {
       const base = this.resolveUrl(ref);
       const known = this.urls.get(ref.id)?.split('?')[0] === base;
       const wasMissing = known && this.status.get(ref.id) === 'missing';
@@ -127,8 +139,6 @@ export class AudioEngine {
       );
     }
     await Promise.all(jobs);
-    // Tracks whose samples just became available can now be heard.
-    if (this.project) this.update(this.project);
   }
 
   private setStatus(id: string, s: SampleStatus) {

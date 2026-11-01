@@ -251,8 +251,26 @@ select,
 
 .workspace {
   display: grid;
-  grid-template-columns: 220px 1fr 330px;
+  grid-template-columns: var(--left-w, 220px) 0 1fr 0 var(--right-w, 330px);
   min-height: 0;
+}
+.splitter-col {
+  position: relative;
+  z-index: 5;
+}
+.splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.splitter:hover,
+.splitter:focus-visible {
+  background: var(--accent-2);
+  outline: none;
 }
 .left,
 .right {
@@ -460,12 +478,79 @@ select,
   padding: 0;
 }
 .sample {
-  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 2px 4px 6px;
   border-radius: 3px;
   cursor: pointer;
   white-space: nowrap;
+}
+.sample .name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.sample .star {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  color: var(--muted);
+  visibility: hidden;
+  cursor: pointer;
+}
+.sample:hover .star,
+.sample:focus .star,
+.sample .star.on {
+  visibility: visible;
+}
+.sample .star.on {
+  color: var(--accent);
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.group-head h4 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.group-head h4::before {
+  content: '▾ ';
+}
+.group-head h4[aria-expanded='false']::before {
+  content: '▸ ';
+}
+.group-count {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.group-head .icon {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0 4px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+.folder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+.more {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 6px;
 }
 .sample:hover {
   background: var(--panel-2);
@@ -601,7 +686,7 @@ select,
 /* Smaller windows (and 150-200 % display scaling): keep a whole bar of 16 steps visible. */
 @media (max-width: 1320px) {
   .workspace {
-    grid-template-columns: 170px 1fr 280px;
+    grid-template-columns: var(--left-w, 170px) 0 1fr 0 var(--right-w, 280px);
   }
   .grid {
     --cell: 21px;
@@ -629,7 +714,7 @@ select,
 }
 @media (max-width: 1100px) {
   .workspace {
-    grid-template-columns: 130px 1fr 240px;
+    grid-template-columns: var(--left-w, 130px) 0 1fr 0 var(--right-w, 240px);
   }
 }
 

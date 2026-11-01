@@ -24,9 +24,10 @@ copy/paste/switching, autosave/recovery and missing-sample handling.
   meters, queued-switch display, bar/beat position
 * Done: display-scaling review at 100/125/150/200 % (compact layout below 1320 px keeps a
   whole bar visible; `test/e2e/scaling.mjs` checks it with screenshots)
-* Resizable panels, full keyboard map
+* Done: resizable side panels (widths remembered, squeezed so a whole bar stays visible)
+* Full keyboard map
 * Done: waveform preview of the selected track's sample (with start/end shown)
-* Sample browser: folder browsing, favourites
+* Done: sample browser folders (recursive, only files inside added folders are read) and favourites
 * Acoustic kit from a CC0 source (candidate: Versilian Community Sample Library, CC0)
 
 ## Milestone 4: export and code

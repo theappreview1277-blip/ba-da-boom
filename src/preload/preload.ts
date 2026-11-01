@@ -19,6 +19,12 @@ const api: DesktopApi = {
   onKitProgress: (cb) => {
     ipcRenderer.on(CHANNELS.kitProgress, (_e, p) => cb(p));
   },
+  settingsGet: () => ipcRenderer.invoke(CHANNELS.settingsGet),
+  settingsSet: (patch) => ipcRenderer.invoke(CHANNELS.settingsSet, patch),
+  folderAdd: () => ipcRenderer.invoke(CHANNELS.folderAdd),
+  folderRemove: (path) => ipcRenderer.invoke(CHANNELS.folderRemove, path),
+  folderList: () => ipcRenderer.invoke(CHANNELS.folderList),
+  folderRead: (folder, file) => ipcRenderer.invoke(CHANNELS.folderRead, folder, file),
   onBeforeClose: (cb) => {
     ipcRenderer.on(CHANNELS.beforeClose, () => cb());
   },

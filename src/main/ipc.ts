@@ -14,6 +14,12 @@ export const CHANNELS = {
   kitList: 'bdb:kit-list',
   kitDownload: 'bdb:kit-download',
   kitProgress: 'bdb:kit-progress',
+  settingsGet: 'bdb:settings-get',
+  settingsSet: 'bdb:settings-set',
+  folderAdd: 'bdb:folder-add',
+  folderRemove: 'bdb:folder-remove',
+  folderList: 'bdb:folder-list',
+  folderRead: 'bdb:folder-read',
   beforeClose: 'bdb:before-close',
   closeReady: 'bdb:close-ready',
   closePending: 'bdb:close-pending',
@@ -66,6 +72,26 @@ export interface KitResult {
   downloaded: number;
 }
 
+/** Remembered between sessions, in settings.json. */
+export interface Settings {
+  /** Folders added to the sample browser (absolute paths). */
+  folders: string[];
+  /** Starred samples: "factory:<key>", "pool:<file>" or "file:<folder>|<relative path>". */
+  favourites: string[];
+  /** Side panel widths in CSS pixels; unset means the default for the window size. */
+  layout: { left?: number; right?: number };
+}
+
+export interface FolderListing {
+  path: string;
+  /** .wav files, relative to the folder with / separators. */
+  files: string[];
+  /** More files than the browser lists. */
+  truncated: boolean;
+  /** False when the folder can't be opened (moved, deleted or a drive not connected). */
+  readable: boolean;
+}
+
 export interface KitProgress {
   kit: string;
   done: number;
@@ -90,6 +116,16 @@ export interface DesktopApi {
   /** Puts a kit into the sample pool: from the bundled kits, the pool itself, or a download. */
   kitDownload(name: string): Promise<KitResult>;
   onKitProgress(cb: (p: KitProgress) => void): void;
+  settingsGet(): Promise<Settings>;
+  /** Changes favourites and/or layout; returns the stored settings. */
+  settingsSet(patch: Partial<Pick<Settings, 'favourites' | 'layout'>>): Promise<Settings>;
+  /** Asks for a folder and adds it to the browser. Null if cancelled. */
+  folderAdd(): Promise<FolderListing | null>;
+  folderRemove(path: string): Promise<void>;
+  /** Scans every added folder again. */
+  folderList(): Promise<FolderListing[]>;
+  /** Copies a WAV from an added folder into the sample pool. */
+  folderRead(folder: string, file: string): Promise<{ file: string }>;
   onBeforeClose(cb: () => void): void;
   closeReady(): Promise<void>;
   /** The renderer is asking the user about unsaved changes; don't force-close. */

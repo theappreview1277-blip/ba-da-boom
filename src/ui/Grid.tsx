@@ -16,6 +16,8 @@ interface GridProps {
   onLength: (trackId: string, length: number) => void;
   onDropFiles: (trackId: string, files: File[]) => void;
   onDropSample: (trackId: string, sampleId: string) => void;
+  /** A WAV dragged from one of the user's folders in the sample list. */
+  onDropFolderFile: (trackId: string, folder: string, file: string) => void;
   meterRef: (index: number) => (el: HTMLDivElement | null) => void;
   /** Registers each row's step container so the playhead can be drawn without React renders. */
   rowRef: (trackId: string) => (el: HTMLDivElement | null) => void;
@@ -108,7 +110,12 @@ const Row = memo(function Row({
       onDrop={(e) => {
         e.preventDefault();
         const sampleId = e.dataTransfer.getData('application/x-bdb-sample');
+        const folderFile = e.dataTransfer.getData('application/x-bdb-folder-file');
         if (sampleId) props.onDropSample(track.id, sampleId);
+        else if (folderFile) {
+          const { folder, file } = JSON.parse(folderFile);
+          props.onDropFolderFile(track.id, folder, file);
+        }
         else if (e.dataTransfer.files.length) props.onDropFiles(track.id, [...e.dataTransfer.files]);
       }}
     >

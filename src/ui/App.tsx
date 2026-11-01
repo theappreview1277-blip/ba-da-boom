@@ -33,7 +33,7 @@ import {
 import { applySteps, randomiseLane } from '../model/generate';
 import { FACTORY_SAMPLES } from '../model/factory';
 import { kitAssignments, kitLabel, kitSampleName } from '../model/kits';
-import type { KitProgress, KitSample } from '../main/ipc';
+import type { FolderListing, KitProgress, KitSample } from '../main/ipc';
 import { parseProject, serializeProject } from '../model/serialize';
 import { STEPS_PER_BAR, type Project, type SampleRef } from '../model/types';
 import { NumberField, Slider, db } from './controls';
@@ -42,6 +42,7 @@ import { Grid } from './Grid';
 import { Generate } from './Generate';
 import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
+import { Splitter } from './Splitter';
 import { Perform } from './Perform';
 import { SongBar } from './SongBar';
 import { reorderProps } from './reorder';
@@ -364,9 +365,11 @@ export function App() {
     return used.size === 1 ? [...used][0]! : '';
   }, [project.tracks, project.samples]);
 
+  /** Put a sample on a track; `ref` adds it to the project first (one undo step for both). */
   const assignSample = useCallback(
-    (trackId: string, sampleId: string) => {
-      edit((p) => {
+    (trackId: string, sampleId: string, ref?: SampleRef) => {
+      edit((p0) => {
+        const p = ref && !p0.samples[ref.id] ? { ...p0, samples: { ...p0.samples, [ref.id]: ref } } : p0;
         const name = p.samples[sampleId]?.name;
         const t = p.tracks.find((x) => x.id === trackId);
         const renamed = t && name && t.name === p.samples[t.sound.sampleId ?? '']?.name ? setTrack(p, trackId, { name }) : p;
@@ -375,6 +378,93 @@ export function App() {
     },
     [edit],
   );
+
+  // The user's sample folders, favourites and panel widths (kept in the app's settings).
+  const [folders, setFolders] = useState<FolderListing[]>([]);
+  const [favourites, setFavourites] = useState<Set<string>>(new Set());
+  const [layout, setLayout] = useState<{ left?: number; right?: number }>({});
+  const [winWidth, setWinWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    desktop.settingsGet().then((s) => {
+      setFavourites(new Set(s.favourites));
+      setLayout(s.layout);
+    }, () => {});
+    desktop.folderList().then(setFolders, () => {});
+    const onResize = () => setWinWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const folderSample = useCallback(async (folder: string, file: string): Promise<SampleRef> => {
+    const { file: pool } = await desktop.folderRead(folder, file);
+    const base = file.split('/').pop()!;
+    return { id: `user:${pool}`, name: base.replace(/\.wav$/i, ''), source: 'user', file: pool, originalName: base };
+  }, []);
+  const folderError = useCallback((file: string, e: unknown) => notify(`Could not use ${file}: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : e}`), [notify]);
+  const auditionFolderFile = useCallback(
+    async (folder: string, file: string) => {
+      try {
+        const ref = await folderSample(folder, file);
+        const engine = engineRef.current;
+        if (engine && (projectRef.current.samples[ref.id] || (await engine.previewSample(ref)))) engine.audition(ref.id);
+        (window as any).__lastPreview = ref;
+      } catch (e) {
+        folderError(file, e);
+      }
+    },
+    [folderSample, folderError],
+  );
+  const assignFolderFile = useCallback(
+    async (trackId: string, folder: string, file: string) => {
+      try {
+        const ref = await folderSample(folder, file);
+        assignSample(trackId, ref.id, projectRef.current.samples[ref.id] ?? ref);
+      } catch (e) {
+        folderError(file, e);
+      }
+    },
+    [folderSample, folderError, assignSample],
+  );
+  const addFolder = useCallback(async () => {
+    const l = await desktop.folderAdd().catch(() => null);
+    if (!l) return;
+    setFolders((fs) => [...fs.filter((f) => f.path !== l.path), l]);
+    notify(`Added ${l.path}: ${l.files.length}${l.truncated ? '+' : ''} WAV file${l.files.length === 1 ? '' : 's'}`);
+  }, [notify]);
+  const removeFolder = useCallback(
+    async (path: string) => {
+      await desktop.folderRemove(path);
+      setFolders((fs) => fs.filter((f) => f.path !== path));
+      notify(`Removed ${path} from the list. The files are still there.`);
+    },
+    [notify],
+  );
+  const toggleFavourite = useCallback((key: string) => {
+    setFavourites((f) => {
+      const n = new Set(f);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      desktop.settingsSet({ favourites: [...n] }).catch(() => {});
+      return n;
+    });
+  }, []);
+  // Panel widths: the defaults follow the window size (as in styles.css); custom widths
+  // are kept, but squeezed when the window is too small to leave room for a whole bar.
+  const panels = useMemo(() => {
+    const [dl, dr] = winWidth > 1320 ? [220, 330] : winWidth > 1100 ? [170, 280] : [130, 240];
+    const room = winWidth - (winWidth > 1320 ? 760 : 640);
+    let left = layout.left ?? dl;
+    let right = layout.right ?? dr;
+    const over = left + right - room;
+    if (over > 0) {
+      left = Math.max(120, Math.round(left - (over * left) / (left + right)));
+      right = Math.max(200, room - left);
+    }
+    return { left, right, room, custom: layout.left !== undefined || layout.right !== undefined };
+  }, [winWidth, layout]);
+  const saveLayout = useCallback((next: { left?: number; right?: number }) => {
+    setLayout(next);
+    desktop.settingsSet({ layout: next }).catch(() => {});
+  }, []);
 
   const audition = useCallback(
     (sampleId: string, withTrack?: string) => {
@@ -751,7 +841,10 @@ export function App() {
           </section>
         </main>
       ) : (
-        <main className="workspace">
+        <main
+          className="workspace"
+          style={panels.custom ? ({ '--left-w': `${panels.left}px`, '--right-w': `${panels.right}px` } as React.CSSProperties) : undefined}
+        >
           <aside className="left">
             <SampleBrowser
               project={project}
@@ -764,8 +857,26 @@ export function App() {
               currentKit={currentKit}
               kitProgress={kitProgress}
               onKit={loadKit}
+              folders={folders}
+              favourites={favourites}
+              onFavourite={toggleFavourite}
+              onAddFolder={addFolder}
+              onRemoveFolder={removeFolder}
+              onRescan={() => desktop.folderList().then(setFolders, () => {})}
+              onFolderAudition={auditionFolderFile}
+              onFolderAssign={(folder, file) => assignFolderFile(track.id, folder, file)}
             />
           </aside>
+          <Splitter
+            side="left"
+            label="Resize sample list"
+            width={panels.left}
+            min={120}
+            max={Math.max(120, Math.min(600, panels.room - panels.right))}
+            onChange={(w) => setLayout((l) => ({ ...l, left: w }))}
+            onCommit={(w) => saveLayout({ ...layout, left: w })}
+            onReset={() => saveLayout({ ...layout, left: undefined })}
+          />
           <section className="center">
             <Grid
               project={project}
@@ -778,7 +889,8 @@ export function App() {
               onTrack={onTrack}
               onLength={onLength}
               onDropFiles={(id, files) => importFiles(files, id)}
-              onDropSample={assignSample}
+              onDropSample={(trackId, sampleId) => assignSample(trackId, sampleId)}
+              onDropFolderFile={assignFolderFile}
               meterRef={meterRef}
               rowRef={rowRef}
             />
@@ -807,6 +919,16 @@ export function App() {
               }}
             />
           </section>
+          <Splitter
+            side="right"
+            label="Resize inspector"
+            width={panels.right}
+            min={200}
+            max={Math.max(200, Math.min(600, panels.room - panels.left))}
+            onChange={(w) => setLayout((l) => ({ ...l, right: w }))}
+            onCommit={(w) => saveLayout({ ...layout, right: w })}
+            onReset={() => saveLayout({ ...layout, right: undefined })}
+          />
           <aside className="right">
             <Inspector
               track={track}
