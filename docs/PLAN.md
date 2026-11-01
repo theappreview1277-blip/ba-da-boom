@@ -35,6 +35,9 @@ copy/paste/switching, autosave/recovery and missing-sample handling.
 * Done: stem export (one WAV per audible track, same offline renderer, equal lengths)
 * Done: MIDI file export (format 1 SMF, PPQ 480, GM drum notes on channel 10;
   probability, ratchets and microtiming taken from the same Strudel pattern as playback)
+* Done: Strudel synths, filters and effects per track (project format 4; settings left at
+  default are not written). Includes a build-time fix to superdough's node pool, which handed
+  filters from one audio context to another (`scripts/superdough-patch-plugin.ts`)
 * Optional Strudel code editor (`@strudel/codemirror`, `@strudel/transpiler`):
   a clearly labelled code pattern that plays alongside the grid; grid lanes are
   never overwritten by code

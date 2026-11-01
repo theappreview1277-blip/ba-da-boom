@@ -6,7 +6,7 @@
 // the position in the pattern, so the exported file is the same every time and
 // matches what plays from the start of live playback.
 
-import { cpsFromBpm, patternFromModel } from '../strudel/fromModel';
+import { cpsFromBpm, hasSound, patternFromModel } from '../strudel/fromModel';
 import { songPattern } from '../strudel/song';
 import type { Project } from '../../model/types';
 import { buildMasterChain } from './master';
@@ -191,7 +191,7 @@ export interface Stem {
  */
 export async function renderStems(project: Project, opts: ExportOptions, onProgress?: (done: number, total: number) => void): Promise<Stem[]> {
   const anySolo = project.tracks.some((t) => t.solo);
-  const audible = project.tracks.map((t, i) => ({ t, i })).filter(({ t }) => (anySolo ? t.solo : !t.mute) && t.sound.sampleId && !opts.missingSamples?.has(t.sound.sampleId));
+  const audible = project.tracks.map((t, i) => ({ t, i })).filter(({ t }) => (anySolo ? t.solo : !t.mute) && hasSound(t) && !(t.sound.source === 'sample' && opts.missingSamples?.has(t.sound.sampleId!)));
   const stems: Stem[] = [];
   let done = 0;
   for (const { t, i } of audible) {

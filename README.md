@@ -16,8 +16,12 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
 * Synthesised CC0 factory kit, WAV import (drag and drop or Import…), auditioning
 * Kit menu with Strudel's 71 drum machine kits (TR-808, TR-909, LinnDrum, MPC60…), included in the
   installer and fetched by `npm run kits` at build time (not stored in git; no licence is stated for them)
-* Per-track volume, pan, pitch, sample start/end, attack/release, choke groups,
-  low/high-pass, drive, delay and reverb sends
+* Per-track volume, pan, pitch, sample start/end, reverse, attack/decay/sustain/release, choke groups,
+  delay and reverb sends
+* Strudel's synths on any track: sine, triangle, square, sawtooth, supersaw, pulse, white/pink/brown
+  noise, crackle and the synth kick, with a note for each track
+* Strudel's filters and effects: low-pass (12 dB, 24 dB or ladder) with resonance and filter envelope,
+  high-pass with resonance, band-pass, vowel, drive, shape, bit crush, downsample, tremolo and phaser
 * Track and master meters, clip light, soft-clip safety stage
 * Save/open portable project folders, autosave and crash recovery, missing-sample handling
 * Offline WAV export (24-bit, 44.1 kHz) with effect tails, of a pattern or the whole song
@@ -25,7 +29,6 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
   (Standard MIDI File, General MIDI drum notes on channel 10)
 * Euclidean rhythms, seeded randomise with step locks, variations, song mode,
   performance view, waveform preview of the selected track's sample
-
 * Sample folders: add your own folders of WAVs to the sample list (remembered), favourites (☆),
   resizable side panels (drag the edges, double-click to reset)
 

@@ -18,6 +18,7 @@ import {
   getSuperdoughAudioController,
   getTrigger,
   initAudio,
+  registerSynthSounds,
   loadBuffer,
   samples,
   setAudioContext,
@@ -67,6 +68,7 @@ export class AudioEngine {
   async init() {
     setAudioContext(this.ac);
     await initAudio({});
+    registerSynthSounds();
     this.master = buildMasterChain(this.ac);
     this.patchOutput();
     this.scheduler = new Cyclist({
@@ -311,6 +313,12 @@ export class AudioEngine {
       return pos ? c - this.songSpan!.origin - pos.start : null;
     }
     return c - this.live.originAt(c);
+  }
+
+  /** Play a synth track's sound once, now (no sample to wait for). */
+  async auditionSynth(controls: Record<string, unknown>) {
+    if (this.ac.state !== 'running') await this.ac.resume();
+    await superdough({ ...controls, orbit: METRONOME_ORBIT + 1 }, this.ac.currentTime + 0.01, 0.25);
   }
 
   /** Play a sample once, now, with optional track sound controls. */

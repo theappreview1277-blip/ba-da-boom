@@ -101,7 +101,7 @@ const Row = memo(function Row({
   sampleName: string;
   props: GridProps;
 }) {
-  const missing = status === 'missing';
+  const missing = status === 'missing' && track.sound.source === 'sample';
   return (
     <div
       className={`row ${selected ? 'selected' : ''} ${track.mute ? 'muted' : ''}`}

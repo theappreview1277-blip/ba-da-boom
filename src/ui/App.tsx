@@ -476,6 +476,21 @@ export function App() {
     },
     [],
   );
+  /** Play a track's sound as it is set up: its sample, or its synth. */
+  const auditionTrack = useCallback(
+    (trackId: string) => {
+      const p = projectRef.current;
+      const i = p.tracks.findIndex((t) => t.id === trackId);
+      const t = p.tracks[i];
+      if (!t) return;
+      if (t.sound.source === 'synth') {
+        const controls = trackControls(t, i, p);
+        delete controls.orbit;
+        engineRef.current?.auditionSynth(controls);
+      } else if (t.sound.sampleId) audition(t.sound.sampleId, t.id);
+    },
+    [audition],
+  );
 
   // --- files ---
   const loadText = useCallback(
@@ -711,12 +726,12 @@ export function App() {
         edit((q) => ({ ...q, metronome: !q.metronome }));
       } else if (!ctrl && k === 'a') {
         const t = p.tracks.find((x) => x.id === st.selectedTrack);
-        if (t?.sound.sampleId) audition(t.sound.sampleId, t.id);
+        if (t) auditionTrack(t.id);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [modal, togglePlay, dispatch, save, guarded, edit, notify, selectPattern, audition, askRemovePattern, setSongMode]);
+  }, [modal, togglePlay, dispatch, save, guarded, edit, notify, selectPattern, auditionTrack, askRemovePattern, setSongMode]);
 
   // --- derived ---
   const track = project.tracks.find((t) => t.id === state.selectedTrack) ?? project.tracks[0];
@@ -725,7 +740,7 @@ export function App() {
   const step = lane.steps[state.selectedStep] ?? lane.steps[0];
   const sampleStatus = useCallback((id: string) => engineRef.current?.sampleStatus(id), []);
   // Not memoised: sample status lives in the engine and changes without a project change.
-  const usedMissing = project.tracks.filter((t) => t.sound.sampleId && sampleStatus(t.sound.sampleId) === 'missing').length;
+  const usedMissing = project.tracks.filter((t) => t.sound.source === 'sample' && t.sound.sampleId && sampleStatus(t.sound.sampleId) === 'missing').length;
 
   return (
     <div className="app">
@@ -941,7 +956,7 @@ export function App() {
               onStep={(patch, k) => edit((p) => setStep(p, p.currentPatternId, track.id, state.selectedStep, patch), k && `step:${k}`)}
               onSound={(patch, k) => edit((p) => setTrackSound(p, track.id, patch), k && `sound:${k}`)}
               onRename={(name) => edit((p) => setTrack(p, track.id, { name }), `rename:${track.id}`)}
-              onAudition={() => track.sound.sampleId && audition(track.sound.sampleId, track.id)}
+              onAudition={() => auditionTrack(track.id)}
             />
           </aside>
         </main>

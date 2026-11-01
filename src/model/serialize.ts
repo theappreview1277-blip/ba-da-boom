@@ -13,6 +13,12 @@ import {
   type Step,
   type Track,
   type TrackSound,
+  FILTER_TYPES,
+  SYNTH_WAVES,
+  VOWELS,
+  type FilterType,
+  type SynthWave,
+  type Vowel,
 } from './types';
 
 export class ProjectFormatError extends Error {}
@@ -51,7 +57,11 @@ function readSound(v: unknown): TrackSound {
   const s = obj(v);
   const d = defaultSound(null);
   return {
+    source: s.source === 'synth' ? 'synth' : 'sample',
     sampleId: typeof s.sampleId === 'string' ? s.sampleId : null,
+    wave: (SYNTH_WAVES as readonly unknown[]).includes(s.wave) ? (s.wave as SynthWave) : d.wave,
+    note: Math.round(clamp(s.note, 24, 96, d.note)),
+    reverse: bool(s.reverse, false),
     volume: clamp(s.volume, 0, 1.5, d.volume),
     pan: clamp(s.pan, -1, 1, d.pan),
     pitch: clamp(s.pitch, -24, 24, d.pitch),
@@ -59,10 +69,27 @@ function readSound(v: unknown): TrackSound {
     end: clamp(s.end, 0, 1, d.end),
     attack: clamp(s.attack, 0, 2, d.attack),
     release: clamp(s.release, 0, 5, d.release),
+    decay: clamp(s.decay, 0, 2, d.decay),
+    sustain: clamp(s.sustain, 0, 1, d.sustain),
     choke: typeof s.choke === 'number' ? Math.round(clamp(s.choke, 1, 8, 1)) : null,
     lowpass: clamp(s.lowpass, 20, 20000, d.lowpass),
+    resonance: clamp(s.resonance, 0, 30, d.resonance),
     highpass: clamp(s.highpass, 20, 20000, d.highpass),
+    hpResonance: clamp(s.hpResonance, 0, 30, d.hpResonance),
+    bandpass: typeof s.bandpass === 'number' && s.bandpass > 0 ? clamp(s.bandpass, 20, 20000, 20) : 0,
+    bandQ: clamp(s.bandQ, 0.1, 30, d.bandQ),
+    filterType: (FILTER_TYPES as readonly unknown[]).includes(s.filterType) ? (s.filterType as FilterType) : d.filterType,
+    filterEnv: clamp(s.filterEnv, -8, 8, d.filterEnv),
+    filterDecay: clamp(s.filterDecay, 0.01, 2, d.filterDecay),
+    vowel: (VOWELS as readonly unknown[]).includes(s.vowel) ? (s.vowel as Vowel) : d.vowel,
     drive: clamp(s.drive, 0, 10, d.drive),
+    shape: clamp(s.shape, 0, 0.95, d.shape),
+    crush: typeof s.crush === 'number' && s.crush > 0 ? Math.round(clamp(s.crush, 1, 16, 16)) : 0,
+    coarse: Math.round(clamp(s.coarse, 1, 32, d.coarse)),
+    tremoloRate: clamp(s.tremoloRate, 0, 20, d.tremoloRate),
+    tremoloDepth: clamp(s.tremoloDepth, 0, 1, d.tremoloDepth),
+    phaserRate: clamp(s.phaserRate, 0, 10, d.phaserRate),
+    phaserDepth: clamp(s.phaserDepth, 0, 1, d.phaserDepth),
     delaySend: clamp(s.delaySend, 0, 1, d.delaySend),
     reverbSend: clamp(s.reverbSend, 0, 1, d.reverbSend),
   };
@@ -100,6 +127,8 @@ export function parseProject(text: string): Project {
   // Migrations from older formats go here, keyed on `version`.
   // 1 -> 2: steps gained `locked`, which readStep defaults to false.
   // 2 -> 3: projects gained `song` and `songLoop` (empty song, loop on).
+  // 3 -> 4: track sounds gained synth source, reverse, envelope decay/sustain, more
+  //         filters and effects; readSound gives each its "off" default.
 
   const tracks: Track[] = (Array.isArray(p.tracks) ? p.tracks : []).map((t, i) => {
     const o = obj(t);
@@ -170,5 +199,11 @@ export function serializeProject(project: Project): string {
       }),
     ),
   }));
-  return JSON.stringify({ ...project, patterns });
+  // Sound settings at their default are left out (readSound fills them in), which keeps files small.
+  const d = defaultSound(null) as unknown as Record<string, unknown>;
+  const tracks = project.tracks.map((t) => ({
+    ...t,
+    sound: Object.fromEntries(Object.entries(t.sound).filter(([k, v]) => k === 'sampleId' || v !== d[k])),
+  }));
+  return JSON.stringify({ ...project, tracks, patterns });
 }

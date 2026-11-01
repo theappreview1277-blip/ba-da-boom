@@ -20,6 +20,8 @@ export const DEFAULT_MAX_POLYPHONY: number = w.DEFAULT_MAX_POLYPHONY;
 export const getSuperdoughAudioController: () => SuperdoughController = w.getSuperdoughAudioController;
 export const setSuperdoughAudioController: (c: SuperdoughController | null) => void = w.setSuperdoughAudioController;
 export const resetGlobalEffects: () => void = w.resetGlobalEffects;
+/** Registers superdough's oscillators, noises and synth kick (sine, sawtooth, supersaw, white, sbd, …). */
+export const registerSynthSounds: () => void = w.registerSynthSounds;
 
 export const Cyclist: new (opts: Record<string, unknown>) => CyclistLike = c.Cyclist;
 export const getTrigger: (opts: { getTime: () => number; defaultOutput: unknown }) => unknown = c.getTrigger;

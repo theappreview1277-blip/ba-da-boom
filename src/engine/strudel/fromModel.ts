@@ -32,21 +32,62 @@ export function swingOffset(stepIndex: number, swing: number): number {
 /** Track sound settings as superdough control values. */
 export function trackControls(track: Track, trackIndex: number, project: Project): Record<string, unknown> {
   const s = track.sound;
+  const synth = s.source === 'synth';
   const v: Record<string, unknown> = {
-    s: s.sampleId ? soundKey(s.sampleId) : undefined,
     gain: s.volume,
     pan: (s.pan + 1) / 2,
-    speed: Math.pow(2, s.pitch / 12),
-    begin: Math.min(s.start, s.end - 0.001),
-    end: Math.max(s.end, s.start + 0.001),
     attack: s.attack,
     orbit: trackIndex + 1,
   };
+  if (synth) {
+    v.s = s.wave;
+    v.note = s.note + s.pitch;
+  } else {
+    v.s = s.sampleId ? soundKey(s.sampleId) : undefined;
+    // A negative speed plays the sample backwards.
+    v.speed = Math.pow(2, s.pitch / 12) * (s.reverse ? -1 : 1);
+    v.begin = Math.min(s.start, s.end - 0.001);
+    v.end = Math.max(s.end, s.start + 0.001);
+  }
   if (s.release < RELEASE_FULL) v.release = s.release;
+  if (s.decay > 0) {
+    v.decay = s.decay;
+    v.sustain = s.sustain;
+  }
   if (s.choke != null) v.cut = s.choke;
-  if (s.lowpass < 20000) v.cutoff = s.lowpass;
-  if (s.highpass > 20) v.hcutoff = s.highpass;
+  if (s.filterType !== '12db') v.ftype = s.filterType;
+  // The filter envelope moves the low-pass, so it needs a cutoff even when the low-pass is open.
+  if (s.lowpass < 20000 || s.filterEnv !== 0) {
+    v.cutoff = s.lowpass;
+    if (s.resonance > 0) v.resonance = s.resonance;
+    if (s.filterEnv !== 0) {
+      v.lpenv = s.filterEnv;
+      v.lpattack = 0.005;
+      v.lpdecay = s.filterDecay;
+      v.lpsustain = 0;
+    }
+  }
+  if (s.highpass > 20) {
+    v.hcutoff = s.highpass;
+    if (s.hpResonance > 0) v.hresonance = s.hpResonance;
+  }
+  if (s.bandpass > 0) {
+    v.bandf = s.bandpass;
+    v.bandq = s.bandQ;
+  }
+  if (s.vowel) v.vowel = s.vowel;
   if (s.drive > 0) v.distort = s.drive;
+  if (s.shape > 0) v.shape = s.shape;
+  if (s.crush > 0) v.crush = s.crush;
+  if (s.coarse > 1) v.coarse = s.coarse;
+  if (s.tremoloRate > 0) {
+    v.tremolo = s.tremoloRate;
+    v.tremolodepth = s.tremoloDepth;
+  }
+  if (s.phaserRate > 0) {
+    v.phaserrate = s.phaserRate;
+    v.phaserdepth = s.phaserDepth;
+  }
   if (s.delaySend > 0) {
     v.delay = s.delaySend;
     v.delaytime = project.delayTime;
@@ -58,6 +99,9 @@ export function trackControls(track: Track, trackIndex: number, project: Project
   }
   return v;
 }
+
+/** Whether a track makes sound at all: a synth, or a sample that is assigned. */
+export const hasSound = (track: Track) => track.sound.source === 'synth' || !!track.sound.sampleId;
 
 /** A per-step seed so that probability rolls on different steps and tracks are independent. */
 export const stepSeed = (projectSeed: number, trackIndex: number, step: number) =>
@@ -76,7 +120,7 @@ function stepPattern(step: Step, index: number, lane: Lane, controls: Record<str
 
 /** The pattern for one lane, looping every lane.length steps. */
 export function lanePattern(lane: Lane, track: Track, trackIndex: number, project: Project): StrudelPattern {
-  if (!track.sound.sampleId) return silence;
+  if (!hasSound(track)) return silence;
   const controls = trackControls(track, trackIndex, project);
   const parts: StrudelPattern[] = [];
   for (let i = 0; i < lane.length; i++) {
@@ -105,7 +149,7 @@ export function patternFromModel(project: Project, pattern: Pattern, opts: Build
   const parts: StrudelPattern[] = [];
   project.tracks.forEach((track, i) => {
     if (!isAudible(track, project.tracks)) return;
-    if (track.sound.sampleId && opts.missingSamples?.has(track.sound.sampleId)) return;
+    if (track.sound.source === 'sample' && track.sound.sampleId && opts.missingSamples?.has(track.sound.sampleId)) return;
     const lane = pattern.lanes[track.id];
     if (lane) parts.push(lanePattern(lane, track, i, project));
   });
@@ -134,5 +178,6 @@ export function laneToCode(lane: Lane, track: Track): string {
       cells.push(c);
     }
   }
-  return `s("${cells.join(' ').replace(/x/g, track.sound.sampleId ? soundKey(track.sound.sampleId) : '~')}").slow(${lane.length}/16)`;
+  const sound = track.sound.source === 'synth' ? track.sound.wave : track.sound.sampleId ? soundKey(track.sound.sampleId) : '~';
+  return `s("${cells.join(' ').replace(/x/g, sound)}").slow(${lane.length}/16)`;
 }

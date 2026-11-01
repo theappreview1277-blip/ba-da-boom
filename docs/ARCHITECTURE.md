@@ -31,9 +31,14 @@ Only documented, exported functions of `@strudel/core` 1.2.6 and
 | Probability | `Pattern.degradeBy` + `Pattern.seed`, with `useRNG('precise')` so seeds are uncorrelated |
 | Microtiming, swing | `Pattern.late` |
 | Scheduling | `Cyclist` + `getTrigger` from `@strudel/core`, output `webaudioOutput` |
-| Voices and effects | superdough controls: `s, gain, velocity, pan, speed, begin, end, attack, release, cut, cutoff, hcutoff, distort, delay, delaytime, delayfeedback, room, roomsize, orbit` |
+| Voices and effects | superdough controls: `s, note, gain, velocity, pan, speed (negative = reverse), begin, end, attack, decay, sustain, release, cut, cutoff, resonance, ftype, lpenv, lpattack, lpdecay, lpsustain, hcutoff, hresonance, bandf, bandq, vowel, distort, shape, crush, coarse, tremolo, tremolodepth, phaserrate, phaserdepth, delay, delaytime, delayfeedback, room, roomsize, orbit`. Synth tracks use superdough's built-in synths (`registerSynthSounds`) by name in `s` |
 | Samples | `samples()` to register, `loadBuffer()` to preload |
 | Export | `superdough()` into an `OfflineAudioContext`, the approach of `renderPatternAudio` in `@strudel/webaudio`, but returning the buffer and adding a tail |
+
+superdough's node pool is not kept per audio context, so a filter used by one export (or by
+live playback) could be handed to another and fail to connect. `scripts/superdough-patch-plugin.ts`
+patches this at build time (a pooled node is only re-used by its own context) and stops the build
+if superdough's code changes.
 
 Each track plays on its own superdough orbit, so delay/reverb are per track and the
 orbit output can be metered.

@@ -584,6 +584,18 @@ select,
   font-size: 13px;
   margin: 0 0 8px;
 }
+.panel-section .sub-head {
+  margin: 14px 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.source-pick {
+  display: flex;
+  gap: 14px;
+  margin: 2px 0 8px;
+}
 .panel-section h3 .sub {
   color: var(--muted);
   font-weight: 400;
