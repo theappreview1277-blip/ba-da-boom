@@ -66,7 +66,9 @@ export async function run(t) {
 
     const synths = {};
     for (const wave of ['sine', 'triangle', 'square', 'sawtooth', 'supersaw', 'pulse', 'white', 'pink', 'brown', 'crackle', 'sbd']) {
-      synths[wave] = await compare({ source: 'synth', wave, note: 48, release: 0.1 });
+      // Crackle is sparse random clicks (superdough: about 9 per second, at random levels), so a short
+      // note can fall between clicks. It gets a longer release so each render holds dozens of clicks.
+      synths[wave] = await compare({ source: 'synth', wave, note: 48, release: wave === 'crackle' ? 1 : 0.1 });
     }
     const silent = Object.entries(synths).filter(([, r]) => r.bad || r.peak < 0.005).map(([w]) => w);
     t.check('every synth wave makes sound (sine, triangle, square, saw, supersaw, pulse, 4 noises, synth kick)', silent.length === 0, silent.length ? `silent: ${silent.join(', ')}` : Object.entries(synths).map(([w, r]) => `${w} ${r.peak.toFixed(2)}`).join(', '));
