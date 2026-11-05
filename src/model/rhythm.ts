@@ -1,5 +1,6 @@
 import { rng } from './generate';
 import { currentPattern, duplicatePattern } from './ops';
+import { classicById, type Classic, type ClassicVariant } from './classics';
 import { STYLES, type Style } from './styles';
 import { MAX_STEPS, STEPS_PER_BAR, type Lane, type Pattern, type Project, type Step, type Track } from './types';
 
@@ -174,11 +175,11 @@ function clearWhere(lane: Lane, other: Lane | undefined): Lane {
 const hasHits = (lane: Lane | undefined) => !!lane && lane.steps.slice(0, lane.length).some((s) => s.on);
 
 /** Which track plays each of the style's parts, using stand-ins when a sound is missing. */
-export function styleTracks(project: Project, style: Style): Partial<Record<Role, string>> {
+export function styleTracks(project: Project, style: { parts: Partial<Record<Role, string | string[]>> }): Partial<Record<Role, string>> {
   const tracks = roleTracks(project);
   const out: Partial<Record<Role, string>> = {};
   const used = new Set<string>();
-  const wanted = Object.keys(style.parts) as Role[];
+  const wanted = (Object.keys(style.parts) as Role[]).filter((r) => style.parts[r]?.length);
   // Direct matches first, so a stand-in never takes a track another part plays itself.
   for (const r of wanted) {
     const id = tracks[r];
@@ -274,6 +275,90 @@ export function completeBeat(p: Project, o: BeatOptions): { project: Project; fi
   const filled = p.tracks.filter((t) => out[t.id] && hasHits(out[t.id])).map((t) => t.id);
   if (!filled.length) return { project: p, filled };
   return { project: withTempo(setPatternLanes(p, pattern.id, out), style, o.tempo), filled };
+}
+
+// --- named beats (the classic beat library) ---
+
+export { CATEGORIES, CLASSICS, VARIANT_COUNT, classicById, type Classic, type ClassicVariant } from './classics';
+
+const CLASSIC_HIT: Record<string, { velocity: number; ratchet: number; micro: number }> = {
+  X: { velocity: 0.95, ratchet: 1, micro: 0 },
+  x: { velocity: 0.8, ratchet: 1, micro: 0 },
+  g: { velocity: 0.36, ratchet: 1, micro: 0 },
+  r: { velocity: 0.8, ratchet: 2, micro: 0 },
+  R: { velocity: 0.85, ratchet: 3, micro: 0 },
+  t: { velocity: 0.75, ratchet: 1, micro: -0.33 },
+  u: { velocity: 0.8, ratchet: 1, micro: 0.33 },
+  q: { velocity: 0.34, ratchet: 1, micro: 0.33 },
+  l: { velocity: 0.9, ratchet: 1, micro: 0.12 },
+};
+
+/** One part of a named beat as hits per step (null = rest). Always the same: nothing is random. */
+export function classicHits(part: string): (Hit | null)[] {
+  return [...part].map((c) => (c === '.' ? null : { ...(CLASSIC_HIT[c] ?? CLASSIC_HIT.x) }));
+}
+
+export interface ClassicOptions {
+  classicId: string;
+  /** Index into the beat's variants. */
+  variant: number;
+  /** Also set the project tempo and swing to the variant's. */
+  tempo: boolean;
+}
+
+/** A variant of a named beat, wrapping the index so stepping past either end comes round. */
+export function classicVariant(c: Classic, index: number): ClassicVariant {
+  const n = c.variants.length;
+  return c.variants[((index % n) + n) % n];
+}
+
+export const classicTempo = (c: Classic, v: ClassicVariant) => ({ bpm: v.bpm ?? c.bpm, swing: v.swing ?? c.swing });
+
+/** The lanes of a named beat variant for a pattern: tracks it doesn't use are cleared (locked steps kept). */
+function classicLanes(p: Project, pattern: Pattern, v: ClassicVariant): Record<string, Lane> {
+  const map = styleTracks(p, v);
+  const hits: Record<string, (Hit | null)[]> = {};
+  for (const [role, trackId] of Object.entries(map) as [Role, string][]) hits[trackId] = classicHits(v.parts[role]!);
+  const length = Math.max(STEPS_PER_BAR, ...Object.values(hits).map((h) => h.length));
+  const out: Record<string, Lane> = {};
+  for (const t of p.tracks) out[t.id] = writeHits(pattern.lanes[t.id], hits[t.id] ? fit(hits[t.id], length) : Array(length).fill(null));
+  // Closed and open hats on the same step would cut each other: the open hat wins.
+  if (map.hat && map.openhat) out[map.hat] = clearWhere(out[map.hat], out[map.openhat]);
+  return out;
+}
+
+function classicTempoOn(p: Project, c: Classic, v: ClassicVariant, on: boolean): Project {
+  return on ? { ...p, ...classicTempo(c, v) } : p;
+}
+
+/** Write a named beat variant into the current pattern. */
+export function loadClassic(p: Project, o: ClassicOptions): Project {
+  const c = classicById(o.classicId);
+  const v = classicVariant(c, o.variant);
+  const pattern = currentPattern(p);
+  return classicTempoOn(setPatternLanes(p, pattern.id, classicLanes(p, pattern, v)), c, v, o.tempo);
+}
+
+/**
+ * Every variant of a named beat as new patterns after the current one, named
+ * after the beat ("Amen 1", "Amen 2", ...). The first new pattern becomes the
+ * current one. The tempo follows the first variant when asked.
+ */
+export function addClassicPatterns(p: Project, o: Omit<ClassicOptions, 'variant'>): { project: Project; added: string[] } {
+  const c = classicById(o.classicId);
+  let q = p;
+  const added: string[] = [];
+  for (const [i, v] of c.variants.entries()) {
+    const dup = duplicatePattern(q, q.currentPatternId);
+    if (dup === q) break;
+    const id = dup.currentPatternId;
+    const lanes = classicLanes(dup, currentPattern(dup), v);
+    q = { ...dup, patterns: dup.patterns.map((pt) => (pt.id === id ? { ...pt, name: `${c.short} ${i + 1}`, lanes } : pt)) };
+    added.push(id);
+  }
+  if (!added.length) return { project: p, added };
+  q = { ...q, currentPatternId: added[0] };
+  return { project: classicTempoOn(q, c, c.variants[0], o.tempo), added };
 }
 
 // --- style detection ---

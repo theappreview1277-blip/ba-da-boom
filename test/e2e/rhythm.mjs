@@ -56,12 +56,13 @@ export async function run(t) {
     await sleep(200);
     p = await cur();
     t.check('undo goes back to the previous beat in one step', p.snare.length < 64 && p.snare.split('').every((c, i) => (c === 'x') === (i % 16 === 8)), p.snare);
-    await win.click('.smart button:has-text("🎲")');
+    // The random dice (the old "shuffle") is gone: named beats live in the beat library.
+    t.check('the style generator has no dice button any more', (await win.locator('.smart button:has-text("🎲")').count()) === 0);
+    await win.fill('#beat-seed', '2');
+    await button('New beat');
     await sleep(200);
-    t.check('the dice moves to the next seed', (await win.inputValue('#beat-seed')) === '2');
-    // The picker still shows the Amen-style break, so the dice writes that pattern with the next seed.
-    const dice = (await cur()).snare;
-    t.check('and writes the picked pattern (Amen-style, four bars)', dice.length === 64, dice.length);
+    const seeded = (await cur()).snare;
+    t.check('a typed seed still writes the picked pattern (Amen-style, four bars)', seeded.length === 64, seeded.length);
 
     // Complete my beat: start a beat on the empty pattern B by hand.
     await win.click('.pattern-btn:text-is("B")');
