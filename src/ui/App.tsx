@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from '../engine/audio/engine';
 import { encodeWav24, renderPattern, renderStems } from '../engine/audio/exportWav';
 import { exportMidi } from '../engine/strudel/midi';
@@ -810,6 +810,36 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [modal, togglePlay, dispatch, save, guarded, edit, notify, selectPattern, auditionTrack, askRemovePattern, setSongMode]);
 
+  // --- top bar: hide button names step by step until it fits on one line ---
+  const topbarRef = useRef<HTMLElement | null>(null);
+  const [compact, setCompact] = useState(0);
+  const fitTopbar = useCallback(() => {
+    const el = topbarRef.current;
+    if (!el) return;
+    // One line when no item has wrapped below the first one.
+    const oneLine = () => {
+      const items = [...el.children] as HTMLElement[];
+      const top = items[0]?.getBoundingClientRect().bottom ?? 0;
+      return items.every((c) => c.getBoundingClientRect().top < top);
+    };
+    const apply = (level: number) => {
+      el.classList.remove('c1', 'c2', 'c3');
+      for (let i = 1; i <= level; i++) el.classList.add(`c${i}`);
+    };
+    let level = 0;
+    for (; level < 3; level++) {
+      apply(level);
+      if (oneLine()) break;
+    }
+    apply(level);
+    setCompact(level);
+  }, []);
+  useLayoutEffect(fitTopbar, [fitTopbar, winWidth, view, playing]);
+  useEffect(() => {
+    // Fonts can arrive after the first layout and change the widths.
+    document.fonts?.ready.then(fitTopbar).catch(() => {});
+  }, [fitTopbar]);
+
   // --- derived ---
   const track = project.tracks.find((t) => t.id === state.selectedTrack) ?? project.tracks[0];
   const trackIndex = project.tracks.indexOf(track);
@@ -821,7 +851,7 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
+      <header className={`topbar ${compact ? Array.from({ length: compact }, (_, i) => `c${i + 1}`).join(' ') : ''}`} ref={topbarRef}>
         <div className="brand">Ba-da-boom</div>
         <div className="group" role="toolbar" aria-label="File">
           <button className="tb" onClick={() => guarded('new')} title="New project" aria-label="New"><Icon name="new" /><span className="lbl">New</span></button>
