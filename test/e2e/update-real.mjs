@@ -19,7 +19,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ps = (cmd) => execFileSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' }).trim();
 const installedVersion = () => {
   try {
-    return ps(`(Get-Item '${exe.replace(/'/g, "''")}').VersionInfo.ProductVersion`);
+    // Windows gives four parts (0.1.0.0); the app's versions have three.
+    return ps(`(Get-Item '${exe.replace(/'/g, "''")}').VersionInfo.ProductVersion`).split('.').slice(0, 3).join('.');
   } catch {
     return '';
   }
