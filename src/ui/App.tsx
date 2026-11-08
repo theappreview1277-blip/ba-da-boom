@@ -56,6 +56,7 @@ import { SAMPLE_FILE, sampleName } from '../model/audioFiles';
 import { toWav } from '../engine/audio/convert';
 import { Pads } from './Pads';
 import { Mixer } from './Mixer';
+import { Logo } from './Logo';
 import { SoundSettings } from './SoundSettings';
 import { findOutput, listOutputs, Midi, type MidiState, type OutputDevice } from './devices';
 import { hitStep, noteToTrack, PAD_KEYS } from '../model/live';
@@ -76,6 +77,7 @@ type Modal =
   | { kind: 'recover'; text: string; missing: string[]; launch: string | null }
   | { kind: 'export' }
   | { kind: 'settings' }
+  | { kind: 'welcome' }
   | { kind: 'removePattern'; id: string }
   | { kind: 'about'; notices: string; version: string; platform: string; logFile: string }
   | { kind: 'unsaved'; then: 'close' | 'new' | 'open'; path?: string }
@@ -549,6 +551,11 @@ export function App() {
     }
     return { left, right, room, custom: layout.left !== undefined || layout.right !== undefined };
   }, [winWidth, layout]);
+  /** Close the welcome screen; it is not shown at start-up again (About shows it). */
+  const endWelcome = useCallback(() => {
+    setModal(null);
+    desktop.settingsSet({ welcomed: true }).catch(() => {});
+  }, []);
   const saveLayout = useCallback((next: Settings['layout']) => {
     setLayout(next);
     desktop.settingsSet({ layout: next }).catch(() => {});
@@ -786,10 +793,12 @@ export function App() {
 
   // --- autosave and recovery, and project files opened from Windows ---
   useEffect(() => {
-    Promise.all([desktop.autosaveRecover(), desktop.launchFile().catch(() => null)]).then(([r, launch]) => {
+    Promise.all([desktop.autosaveRecover(), desktop.launchFile().catch(() => null), desktop.settingsGet().catch(() => null)]).then(([r, launch, settings]) => {
       // Unsaved work from a crash comes first; the file opens if the user starts fresh.
       if (r) setModal({ kind: 'recover', text: r.text, missing: r.missing, launch });
       else if (launch) guardedRef.current('open', launch);
+      // The first time the app starts on its own, say hello.
+      else if (settings && !settings.welcomed) setModal({ kind: 'welcome' });
     });
     desktop.onOpenFile((path) => guardedRef.current('open', path));
     desktop.onBeforeClose(async () => {
@@ -1010,7 +1019,10 @@ export function App() {
   return (
     <div className="app">
       <header className={`topbar ${compact ? Array.from({ length: compact }, (_, i) => `c${i + 1}`).join(' ') : ''}`} ref={topbarRef}>
-        <div className="brand">Ba-da-boom</div>
+        <div className="brand">
+          <Logo size={22} />
+          <span className="lbl">Ba-da-boom</span>
+        </div>
         <div className="group" role="toolbar" aria-label="File">
           <button className="tb" onClick={() => guarded('new')} title="New project" aria-label="New"><Icon name="new" /><span className="lbl">New</span></button>
           <button className="tb" onClick={() => guarded('open')} title="Open project (Ctrl+O)" aria-label="Open"><Icon name="open" /><span className="lbl">Open</span></button>
@@ -1484,6 +1496,33 @@ export function App() {
         </Dialog>
       )}
 
+      {modal?.kind === 'welcome' && (
+        <Dialog title="Welcome to Ba-da-boom" wide>
+          <div className="welcome">
+            <Logo size={72} />
+            <div>
+              <p className="welcome-lead">Make drum beats: pick one, press play, then make it yours.</p>
+              <ol className="welcome-steps">
+                <li>
+                  <strong>Pick a beat</strong> from the Beat library under the grid (Amen, Funky Drummer, house, trap and more), or click and drag on the grid to paint your own.
+                </li>
+                <li>
+                  <strong>Press Space</strong> to play and stop. Number keys 1–8 switch patterns.
+                </li>
+                <li>
+                  <strong>Shape the sound</strong> with the knobs on the right, balance it in the Mixer, and play along on the Pads. Ctrl+Z undoes anything.
+                </li>
+              </ol>
+            </div>
+          </div>
+          <div className="actions">
+            <button onClick={() => { endWelcome(); guarded('open'); }}>Open a project…</button>
+            <button onClick={endWelcome}>Start with this beat</button>
+            <button className="primary" onClick={() => { endWelcome(); saveLayout({ ...layout, tool: 'library', toolsOpen: true }); }}>Browse the Beat library</button>
+          </div>
+        </Dialog>
+      )}
+
       {modal?.kind === 'settings' && (
         <Dialog title="Settings" wide>
           <SoundSettings
@@ -1513,6 +1552,7 @@ export function App() {
           <p>Factory sounds are synthesised by the project and released under CC0 1.0. The Acoustic Kit is from Virtuosity Drums (Austin McMahon, Virtuosity Musical Instruments, with percussion from VSCO 2), also CC0 1.0.</p>
           <pre className="notices">{modal.notices || 'Third-party notices are included with the installed app.'}</pre>
           <div className="actions">
+            <button onClick={() => setModal({ kind: 'welcome' })}>Welcome screen</button>
             {inElectron && <button onClick={() => desktop.showLog()} title={modal.logFile}>Show error log</button>}
             <button className="primary" onClick={() => setModal(null)}>Close</button>
           </div>

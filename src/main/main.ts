@@ -389,6 +389,7 @@ function registerIpc() {
       ...(Array.isArray(patch?.favourites) ? { favourites: patch.favourites } : {}),
       ...(patch?.layout && typeof patch.layout === 'object' ? { layout: { ...s.layout, ...patch.layout } } : {}),
       ...(patch?.sound && typeof patch.sound === 'object' ? { sound: { ...s.sound, ...patch.sound } } : {}),
+      ...(typeof patch?.welcomed === 'boolean' ? { welcomed: patch.welcomed } : {}),
     })),
   );
   ipcMain.handle(CHANNELS.folderAdd, async () => {

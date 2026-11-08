@@ -116,6 +116,8 @@ export interface Settings {
     lane?: StepLane;
   };
   sound: SoundSettings;
+  /** The welcome screen has been seen, so it is not shown at start-up any more. */
+  welcomed?: boolean;
 }
 
 export interface FolderListing {
@@ -154,7 +156,7 @@ export interface DesktopApi {
   onKitProgress(cb: (p: KitProgress) => void): void;
   settingsGet(): Promise<Settings>;
   /** Changes favourites and/or layout; returns the stored settings. */
-  settingsSet(patch: Partial<Pick<Settings, 'favourites' | 'layout' | 'sound'>>): Promise<Settings>;
+  settingsSet(patch: Partial<Pick<Settings, 'favourites' | 'layout' | 'sound' | 'welcomed'>>): Promise<Settings>;
   /** Asks for a folder and adds it to the browser. Null if cancelled. */
   folderAdd(): Promise<FolderListing | null>;
   folderRemove(path: string): Promise<void>;
