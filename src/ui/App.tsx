@@ -40,6 +40,9 @@ import { NumberField, Slider, db } from './controls';
 import { desktop, inElectron, sampleUrl } from './desktop';
 import { Grid } from './Grid';
 import { Generate } from './Generate';
+import { SmartBeats } from './SmartBeats';
+import { addClassicPatterns, addFillPattern, classicById, classicVariant, completeBeat, fillPattern, generateBeat, humanise, loadClassic, resolveFillType, styleById, FILL_TYPES } from '../model/rhythm';
+import { BeatLibrary } from './BeatLibrary';
 import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
 import { Splitter } from './Splitter';
@@ -908,6 +911,62 @@ export function App() {
               onDropFolderFile={assignFolderFile}
               meterRef={meterRef}
               rowRef={rowRef}
+            />
+            <BeatLibrary
+              onLoad={(opts) => {
+                edit((p) => loadClassic(p, opts));
+                const c = classicById(opts.classicId);
+                notify(`${c.name}: ${classicVariant(c, opts.variant).name} loaded into pattern ${pattern.name}`);
+              }}
+              onAddAll={(opts) => {
+                const { project: next, added } = addClassicPatterns(projectRef.current, opts);
+                if (!added.length) {
+                  notify('No room for more patterns');
+                  return;
+                }
+                edit(() => next);
+                // While playing, the first new pattern comes in at the next bar, like pressing its number.
+                engineRef.current?.switchPattern(next.currentPatternId);
+                const names = added.map((id) => next.patterns.find((pt) => pt.id === id)!.name);
+                notify(`Added ${added.length} patterns: ${names[0]} to ${names[names.length - 1]}`);
+              }}
+            />
+            <SmartBeats
+              project={project}
+              pattern={pattern}
+              trackIndex={trackIndex}
+              onBeat={(opts) => {
+                edit((p) => generateBeat(p, opts));
+                const s = styleById(opts.styleId);
+                notify(`${s.genre}: ${s.name} beat written (seed ${opts.seed})`);
+              }}
+              onComplete={(opts) => {
+                const { project: next, filled } = completeBeat(projectRef.current, opts);
+                if (!filled.length) {
+                  notify('Every track this pattern uses already has hits');
+                  return;
+                }
+                edit(() => next);
+                notify(`Completed with ${styleById(opts.styleId).name}: ${filled.map((id) => next.tracks.find((t) => t.id === id)?.name).join(', ')}`);
+              }}
+              onFill={(opts, asNew) => {
+                const kind = FILL_TYPES.find((f) => f.id === resolveFillType(projectRef.current, opts))?.name ?? 'Fill';
+                if (asNew) {
+                  const next = addFillPattern(projectRef.current, opts);
+                  edit(() => next);
+                  // While playing, the fill pattern comes in at the next bar, like pressing its number.
+                  engineRef.current?.switchPattern(next.currentPatternId);
+                  notify(`Pattern ${currentPattern(next).name} added (${kind.toLowerCase()})`);
+                } else {
+                  edit((p) => fillPattern(p, opts));
+                  notify(`${kind} written into the end of pattern ${pattern.name}`);
+                }
+              }}
+              onHumanise={(opts, scope) => {
+                const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
+                edit((p) => humanise(p, ids, opts));
+                notify(`Humanised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'}`);
+              }}
             />
             <Generate
               trackIndex={trackIndex}

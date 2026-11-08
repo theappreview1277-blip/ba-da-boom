@@ -42,6 +42,8 @@ const suites = [
   ['./smoke.mjs', 'Playback, editing and export'],
   ['./electron-files.mjs', 'Projects, missing samples and recovery'],
   ['./generate.mjs', 'Pattern generators'],
+  ['./rhythm.mjs', 'Beat intelligence'],
+  ['./beatlib.mjs', 'Beat library'],
   ['./patterns.mjs', 'Pattern list'],
   ['./song.mjs', 'Song mode'],
   ['./kits.mjs', 'Tempo entry and kits'],
