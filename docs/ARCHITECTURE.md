@@ -108,5 +108,13 @@ first transient, which changed the first hit of every export.
   folder, so unsaved projects can play them.
 * Missing samples: the reference is kept, the track is marked "missing" and is
   silent; dropping a WAV on the track relinks it.
+* Double-clicking a `.badaboom` file starts the app with its path (or, when the app is
+  already open, the second copy hands the path to the first and quits). Only paths handed
+  over this way can be opened without the Open dialog; the renderer cannot name other files.
+  After a crash, recovery is offered first, with the double-clicked file as the alternative.
+* Error log: `logs/badaboom.log` in the app data folder (renamed to `badaboom.old.log` past
+  1 MB). The main process logs start, normal close, uncaught errors and crashed or hung
+  processes; the renderer logs uncaught errors and failed playback, save, open, import and
+  export, at most 100 lines a minute. About → Show error log.
 * Autosave every 5 s to the app data folder. A session lock file detects an
   unclean exit; recovery is offered on the next start.

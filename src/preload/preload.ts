@@ -30,6 +30,12 @@ const api: DesktopApi = {
   },
   closeReady: () => ipcRenderer.invoke(CHANNELS.closeReady),
   closePending: () => ipcRenderer.invoke(CHANNELS.closePending),
+  launchFile: () => ipcRenderer.invoke(CHANNELS.launchFile),
+  onOpenFile: (cb) => {
+    ipcRenderer.on(CHANNELS.openFile, (_e, path) => cb(path));
+  },
+  log: (level, message) => ipcRenderer.invoke(CHANNELS.log, level, message),
+  showLog: () => ipcRenderer.invoke(CHANNELS.showLog),
 };
 
 contextBridge.exposeInMainWorld('bdb', api);
