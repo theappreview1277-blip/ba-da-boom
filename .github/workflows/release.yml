@@ -1,11 +1,13 @@
 name: Release
 
-# Pushing a version tag (v0.1.1, say) builds the Windows installer and publishes it,
-# with the latest.yml the app's update check reads, as a GitHub release. Installed
-# copies of the app then offer the update. Pushing the tag is the decision to release.
+# Pushing a version tag (v0.1.1, say), or running this workflow by hand on main,
+# builds the Windows installer and publishes it, with the latest.yml the app's update
+# check reads, as the GitHub release v<version in package.json>. Installed copies of
+# the app then offer the update. Starting it is the decision to release.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,9 +24,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: The tag matches the version in package.json
+      - name: The tag matches the version in package.json (or a hand-started run is on main)
         shell: bash
-        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+          else test "$GITHUB_REF_NAME" = main; fi
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
