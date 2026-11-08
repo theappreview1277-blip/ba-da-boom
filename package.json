@@ -1,7 +1,7 @@
 {
   "name": "badaboom",
   "productName": "Ba-da-boom",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Drum machine with a visual step sequencer, powered by Strudel's pattern engine",
   "license": "AGPL-3.0-or-later",
   "author": "Ba-da-boom contributors",
@@ -47,7 +47,7 @@
   "build": {
     "appId": "io.github.badaboom.drummachine",
     "productName": "Ba-da-boom",
-    "copyright": "Copyright \u00a9 Ba-da-boom contributors. AGPL-3.0-or-later.",
+    "copyright": "Copyright © Ba-da-boom contributors. AGPL-3.0-or-later.",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -107,7 +107,8 @@
       {
         "provider": "github",
         "owner": "theappreview1277-blip",
-        "repo": "ba-da-boom"
+        "repo": "ba-da-boom",
+        "releaseType": "release"
       }
     ]
   }
