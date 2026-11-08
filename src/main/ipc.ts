@@ -29,10 +29,26 @@ export const CHANNELS = {
   showLog: 'bdb:show-log',
 } as const;
 
-export const TOOL_TABS = ['library', 'beats', 'generate'] as const;
+export const TOOL_TABS = ['library', 'beats', 'generate', 'pads'] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
 export const STEP_LANES = ['velocity', 'probability', 'micro'] as const;
 export type StepLane = (typeof STEP_LANES)[number];
+/** How MIDI notes pick a track: the General MIDI drum map, or pads in order from note 36 (C1). */
+export const MIDI_MAPS = ['gm', 'pads36'] as const;
+export type MidiMap = (typeof MIDI_MAPS)[number];
+
+/** Where the sound goes and what plays it. */
+export interface SoundSettings {
+  /** The sound card picked in Settings; unset means the system default. The name finds it again if its id changes. */
+  output?: { id: string; label: string };
+  /** The MIDI input to listen to (its name); unset means every connected input. */
+  midiInput?: string;
+  midiMap?: MidiMap;
+  /** Letter keys play the pads (Z X C V … and A S D F …). */
+  padKeys?: boolean;
+  /** Recorded hits go to the nearest step (true) or keep their exact timing (false). */
+  quantise?: boolean;
+}
 
 export interface OpenResult {
   path: string | null;
@@ -99,6 +115,7 @@ export interface Settings {
     /** What the step lane under the grid edits. */
     lane?: StepLane;
   };
+  sound: SoundSettings;
 }
 
 export interface FolderListing {
@@ -137,7 +154,7 @@ export interface DesktopApi {
   onKitProgress(cb: (p: KitProgress) => void): void;
   settingsGet(): Promise<Settings>;
   /** Changes favourites and/or layout; returns the stored settings. */
-  settingsSet(patch: Partial<Pick<Settings, 'favourites' | 'layout'>>): Promise<Settings>;
+  settingsSet(patch: Partial<Pick<Settings, 'favourites' | 'layout' | 'sound'>>): Promise<Settings>;
   /** Asks for a folder and adds it to the browser. Null if cancelled. */
   folderAdd(): Promise<FolderListing | null>;
   folderRemove(path: string): Promise<void>;

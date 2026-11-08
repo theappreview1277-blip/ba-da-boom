@@ -388,6 +388,7 @@ function registerIpc() {
       ...s,
       ...(Array.isArray(patch?.favourites) ? { favourites: patch.favourites } : {}),
       ...(patch?.layout && typeof patch.layout === 'object' ? { layout: { ...s.layout, ...patch.layout } } : {}),
+      ...(patch?.sound && typeof patch.sound === 'object' ? { sound: { ...s.sound, ...patch.sound } } : {}),
     })),
   );
   ipcMain.handle(CHANNELS.folderAdd, async () => {
@@ -477,8 +478,10 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    // Nothing in this app needs camera, microphone, notifications etc.
-    session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+    // MIDI input (for drum pads and keyboards) is the only permission the app uses: no camera,
+    // microphone, notifications etc. Chromium asks for any MIDI access as "midiSysex"; the app only
+    // reads note messages from inputs and never sends anything to a MIDI device.
+    session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'midi' || perm === 'midiSysex'));
     registerProtocol();
     registerIpc();
     createWindow();

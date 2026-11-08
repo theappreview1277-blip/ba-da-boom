@@ -4,14 +4,14 @@
 
 import { promises as fs } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { STEP_LANES, TOOL_TABS, type FolderListing, type Settings } from './ipc';
+import { MIDI_MAPS, STEP_LANES, TOOL_TABS, type FolderListing, type Settings } from './ipc';
 import { SAMPLE_FILE } from '../model/audioFiles';
 
 const MAX_FILES_PER_FOLDER = 5000;
 const MAX_DEPTH = 8;
 const MAX_FAVOURITES = 2000;
 
-const empty = (): Settings => ({ folders: [], favourites: [], layout: {} });
+const empty = (): Settings => ({ folders: [], favourites: [], layout: {}, sound: {} });
 
 export async function readSettings(file: string): Promise<Settings> {
   try {
@@ -33,6 +33,16 @@ export function cleanSettings(raw: any): Settings {
     tool: oneOf(raw?.layout?.tool, TOOL_TABS),
     toolsOpen: typeof raw?.layout?.toolsOpen === 'boolean' ? raw.layout.toolsOpen : undefined,
     lane: oneOf(raw?.layout?.lane, STEP_LANES),
+  };
+  const text = (v: unknown, max = 300) => (typeof v === 'string' && v.length <= max ? v : undefined);
+  const flag = (v: unknown) => (typeof v === 'boolean' ? v : undefined);
+  const o = raw?.sound?.output;
+  s.sound = {
+    output: text(o?.id) && text(o?.label) !== undefined ? { id: o.id, label: o.label } : undefined,
+    midiInput: text(raw?.sound?.midiInput),
+    midiMap: oneOf(raw?.sound?.midiMap, MIDI_MAPS),
+    padKeys: flag(raw?.sound?.padKeys),
+    quantise: flag(raw?.sound?.quantise),
   };
   return s;
 }

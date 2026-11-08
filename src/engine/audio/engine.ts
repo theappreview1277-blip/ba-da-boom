@@ -341,6 +341,30 @@ export class AudioEngine {
     await superdough({ ...controls, orbit: METRONOME_ORBIT + 1 }, this.ac.currentTime + 0.01, 0.25);
   }
 
+  /**
+   * A live hit on a track (a pad, a key or a MIDI note): played now through the
+   * track's own channel, so its effects apply and its meter moves.
+   */
+  async hit(controls: Record<string, unknown>, sampleId: string | null, velocity: number) {
+    if (!controls.s || (sampleId && this.status.get(sampleId) !== 'ok')) return;
+    if (this.ac.state !== 'running') await this.ac.resume();
+    await superdough({ ...controls, velocity }, this.ac.currentTime + 0.005, sampleId ? 0.5 : 0.25);
+  }
+
+  /** Send the sound to a sound card, by its device id ('' is the system default). */
+  async setOutput(deviceId: string) {
+    const ac = this.ac as AudioContext & { setSinkId?: (id: string) => Promise<void>; sinkId?: string };
+    if (!ac.setSinkId) throw new Error('Choosing a sound card is not supported here.');
+    if ((ac.sinkId ?? '') === deviceId) return;
+    await ac.setSinkId(deviceId);
+  }
+
+  /** The sound card in use ('' is the system default). */
+  get outputId(): string {
+    const id = (this.ac as AudioContext & { sinkId?: unknown }).sinkId;
+    return typeof id === 'string' ? id : '';
+  }
+
   /** Play a sample once, now, with optional track sound controls. */
   async audition(sampleId: string, controls: Record<string, unknown> = {}) {
     if (this.status.get(sampleId) !== 'ok') return;
