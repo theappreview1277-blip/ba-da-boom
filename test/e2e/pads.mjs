@@ -35,6 +35,8 @@ async function withFakes(win, outputs) {
   // A reload looks like a crash to the app, so it offers to recover the work: take it.
   const recover = win.locator('.modal button:has-text("Recover")');
   if (await recover.waitFor({ timeout: 2000 }).then(() => true, () => false)) await recover.click();
+  await win.waitForTimeout(200);
+  await win.waitForFunction(() => [...window.__engine['status'].values()].every((s) => s !== 'loading'), null, { timeout: 30000 });
 }
 
 export async function run(t) {
