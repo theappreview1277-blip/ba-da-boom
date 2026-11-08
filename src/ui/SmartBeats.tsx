@@ -78,11 +78,11 @@ export function SmartBeats({ project, pattern, trackIndex, onBeat, onComplete, o
   return (
     <section className="panel-section smart" aria-label="Beat intelligence">
       <h3>
-        Beat intelligence <span className="sub">· {STYLES.length} patterns in {GENRES.length} kinds of music · locked steps are kept</span>
+        Beat intelligence <span className="sub">· style generator: {STYLES.length} styles in {GENRES.length} kinds of music · locked steps are kept</span>
       </h3>
       <div className="gen-blocks">
         <div className="gen-block" aria-label="Beat">
-          <div className="gen-title">Beat</div>
+          <div className="gen-title">Style generator</div>
           <Pick label="Music" value={genre} options={GENRES.map((g) => ({ id: g, name: g }))} onChange={(g) => setStyleId(STYLES.find((s) => s.genre === g)!.id)} />
           <Pick label="Pattern" value={styleId} options={inGenre.map((s) => ({ id: s.id, name: s.name }))} onChange={setStyleId} />
           <p className="about" title={style.about}>
@@ -96,16 +96,6 @@ export function SmartBeats({ project, pattern, trackIndex, onBeat, onComplete, o
           <div className="gen-buttons">
             <button className="small" onClick={() => onBeat(beat())} title="Write this beat into the pattern. Tracks it doesn't use are cleared.">
               New beat
-            </button>
-            <button
-              className="small"
-              onClick={() => {
-                setSeed(seed + 1);
-                onBeat(beat(seed + 1));
-              }}
-              title="Try the next seed"
-            >
-              🎲
             </button>
             <button className="small" onClick={() => onComplete(beat())} title="Add this pattern's parts to the tracks that are still empty. Tracks you have written stay as they are.">
               Complete my beat
