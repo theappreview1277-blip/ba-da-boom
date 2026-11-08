@@ -4,6 +4,7 @@
 // minutes of playback while beats and variants change the way a person would.
 // Sound must never drop out and the audio clock must keep up with real time.
 import { closeApp, launchApp, runStandalone } from './lib.mjs';
+import { openTool } from './lib.mjs';
 
 const SECONDS = Number(process.env.BDB_BEATLIB_SECONDS ?? 180);
 
@@ -15,6 +16,7 @@ export async function run(t) {
   const { app, win, pageErrors } = await launchApp();
   win.setDefaultTimeout(15000);
   try {
+    await openTool(win, 'Beat library');
     const cur = () =>
       win.evaluate(() => {
         const p = window.__engine['project'];

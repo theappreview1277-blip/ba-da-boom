@@ -1,8 +1,19 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect, useRef } from 'react';
 import type { Lane, Pattern, Project, Step, Track } from '../model/types';
 import { STEPS_PER_BAR } from '../model/types';
 import { Meter } from './controls';
+import { trackColor } from './colors';
 import type { SampleStatus } from '../engine/audio/engine';
+
+/** The part of the pattern on screen: whole bars, `steps` long, from `start`. */
+export interface GridPage {
+  start: number;
+  steps: number;
+  /** Steps in the whole pattern view (the longest lane, rounded up to whole bars). */
+  total: number;
+  /** Width of one step cell in pixels. */
+  cell: number;
+}
 
 interface GridProps {
   project: Project;
@@ -10,7 +21,13 @@ interface GridProps {
   selectedTrack: string;
   selectedStep: number;
   sampleStatus: (id: string) => SampleStatus | undefined;
-  onToggle: (trackId: string, step: number) => void;
+  page: GridPage;
+  /** The playhead turns the pages while playing. */
+  follow: boolean;
+  onPage: (index: number) => void;
+  onFollow: (on: boolean) => void;
+  /** Switch a step on or off; one drag (same `gesture`) is one undo step. */
+  onPaint: (trackId: string, step: number, on: boolean, gesture: string) => void;
   onSelect: (trackId: string, step?: number) => void;
   onTrack: (trackId: string, patch: Partial<Pick<Track, 'mute' | 'solo'>>) => void;
   onLength: (trackId: string, length: number) => void;
@@ -23,43 +40,142 @@ interface GridProps {
   rowRef: (trackId: string) => (el: HTMLDivElement | null) => void;
 }
 
+let gestures = 0;
+
+/** Width of the track names column plus the gap after it, as in styles.css (narrower below 1320 px). */
+export const trackHeadWidth = (windowWidth: number) => (windowWidth > 1320 ? 238 : 208);
+const GAP = 3;
+const MIN_CELL = 22;
+const MAX_CELL = 40;
+
+/**
+ * Which bars are on screen. As many whole bars as fit (4, 3, 2 or 1) at a
+ * comfortable cell size; cells grow to use the width, up to MAX_CELL.
+ * `width` is the grid area's inner width in pixels.
+ */
+export function gridPage(total: number, width: number, index: number, headW = 238): GridPage {
+  const bars = total / STEPS_PER_BAR;
+  const fit = (n: number) => Math.floor((width - headW - 4) / (n * STEPS_PER_BAR)) - GAP;
+  const options = [Math.min(bars, 4), 2, 1].filter((n) => n <= bars);
+  const per = options.find((n) => fit(n) >= MIN_CELL) ?? 1;
+  const steps = per * STEPS_PER_BAR;
+  const pages = Math.ceil(total / steps);
+  const i = Math.max(0, Math.min(pages - 1, index));
+  return { start: i * steps, steps, total, cell: Math.max(18, Math.min(MAX_CELL, fit(per))) };
+}
+
+/** Ruler label for a step: the bar number at the start of a bar, bar.beat on the other beats. */
+export function rulerLabel(step: number): { text: string; bar: boolean } | null {
+  if (step % STEPS_PER_BAR === 0) return { text: String(step / STEPS_PER_BAR + 1), bar: true };
+  if (step % 4 === 0) return { text: `${Math.floor(step / STEPS_PER_BAR) + 1}.${(step % STEPS_PER_BAR) / 4 + 1}`, bar: false };
+  return null;
+}
+
 export function Grid(props: GridProps) {
-  const { project, pattern } = props;
-  const maxLen = Math.max(...project.tracks.map((t) => pattern.lanes[t.id]?.length ?? 16));
-  const columns = Math.ceil(maxLen / STEPS_PER_BAR) * STEPS_PER_BAR;
+  const { project, pattern, page } = props;
+  const pages = Math.max(1, Math.ceil(page.total / page.steps));
+  const current = Math.floor(page.start / page.steps);
+  const barsPerPage = page.steps / STEPS_PER_BAR;
+
+  // Painting: press on a step to switch it, drag across others to give them the same state.
+  const painting = useRef<{ on: boolean; gesture: string } | null>(null);
+  const propsRef = useRef(props);
+  propsRef.current = props;
+  useEffect(() => {
+    const up = () => (painting.current = null);
+    window.addEventListener('mouseup', up);
+    window.addEventListener('blur', up);
+    return () => {
+      window.removeEventListener('mouseup', up);
+      window.removeEventListener('blur', up);
+    };
+  }, []);
+  const onPress = useCallback((trackId: string, step: number, wasOn: boolean, shift: boolean) => {
+    const p = propsRef.current;
+    if (shift) {
+      p.onSelect(trackId, step);
+      return;
+    }
+    painting.current = { on: !wasOn, gesture: `paint:${++gestures}` };
+    p.onPaint(trackId, step, !wasOn, painting.current.gesture);
+    p.onSelect(trackId, step);
+  }, []);
+  const onEnter = useCallback((trackId: string, step: number, isOn: boolean, buttons: number) => {
+    const g = painting.current;
+    if (!g || !(buttons & 1)) return;
+    if (isOn !== g.on) propsRef.current.onPaint(trackId, step, g.on, g.gesture);
+  }, []);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      const ti = project.tracks.findIndex((t) => t.id === props.selectedTrack);
+      const p = propsRef.current;
+      const ti = project.tracks.findIndex((t) => t.id === p.selectedTrack);
       let t = ti;
-      let s = props.selectedStep;
+      let s = p.selectedStep;
       if (e.key === 'ArrowUp') t = Math.max(0, ti - 1);
       else if (e.key === 'ArrowDown') t = Math.min(project.tracks.length - 1, ti + 1);
       else if (e.key === 'ArrowLeft') s = Math.max(0, s - (e.ctrlKey ? 4 : 1));
-      else if (e.key === 'ArrowRight') s = Math.min(columns - 1, s + (e.ctrlKey ? 4 : 1));
+      else if (e.key === 'ArrowRight') s = Math.min(page.total - 1, s + (e.ctrlKey ? 4 : 1));
       else if (e.key === 'Enter') {
-        props.onToggle(props.selectedTrack, props.selectedStep);
+        const on = p.pattern.lanes[p.selectedTrack]?.steps[p.selectedStep]?.on ?? false;
+        p.onPaint(p.selectedTrack, p.selectedStep, !on, `key:${++gestures}`);
         e.preventDefault();
         return;
       } else return;
       e.preventDefault();
-      props.onSelect(project.tracks[t].id, s);
-      const cell = document.querySelector<HTMLElement>(`[data-cell="${project.tracks[t].id}:${s}"]`);
-      cell?.focus();
+      const id = project.tracks[t].id;
+      p.onSelect(id, s);
+      // Moving off the page turns to the page that holds the step.
+      if (s < page.start || s >= page.start + page.steps) p.onPage(Math.floor(s / page.steps));
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-cell="${id}:${s}"]`)?.focus());
     },
-    [project.tracks, props, columns],
+    [project.tracks, page],
   );
 
   return (
-    <div className="grid" role="grid" aria-label="Step sequencer" onKeyDown={onKeyDown} style={{ ['--cols' as string]: columns }}>
+    <div
+      className="grid"
+      role="grid"
+      aria-label="Step sequencer"
+      onKeyDown={onKeyDown}
+      style={{ ['--cols' as string]: page.steps, ['--cell-w' as string]: `${page.cell}px` }}
+    >
       <div className="grid-header" role="row">
-        <div className="track-head-spacer" />
+        <div className="pages" role="toolbar" aria-label="Bars on screen">
+          {pages > 1 ? (
+            <>
+              {Array.from({ length: pages }, (_, i) => {
+                const from = i * barsPerPage + 1;
+                const label = barsPerPage === 1 ? `${from}` : `${from}–${Math.min(from + barsPerPage - 1, page.total / STEPS_PER_BAR)}`;
+                return (
+                  <button
+                    key={i}
+                    className={`page-btn ${i === current ? 'on' : ''}`}
+                    aria-pressed={i === current}
+                    title={`Show bar${barsPerPage === 1 ? '' : 's'} ${label}`}
+                    onClick={() => props.onPage(i)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <label className="follow" title="Turn the pages with the playhead while playing">
+                <input type="checkbox" checked={props.follow} onChange={(e) => props.onFollow(e.target.checked)} /> Follow
+              </label>
+            </>
+          ) : (
+            <span className="pages-label">Bar{page.total > STEPS_PER_BAR ? 's' : ''}</span>
+          )}
+        </div>
         <div className="ruler">
-          {Array.from({ length: columns }, (_, i) => (
-            <div key={i} className={`ruler-cell ${i % 4 === 0 ? 'beat' : ''}`}>
-              {i % 4 === 0 ? i / 4 + 1 : ''}
-            </div>
-          ))}
+          {Array.from({ length: page.steps }, (_, i) => {
+            const l = rulerLabel(page.start + i);
+            return (
+              <div key={i} className={`ruler-cell ${l ? (l.bar ? 'bar' : 'beat') : ''}`}>
+                {l?.text ?? ''}
+              </div>
+            );
+          })}
         </div>
       </div>
       {project.tracks.map((track, i) => (
@@ -68,44 +184,50 @@ export function Grid(props: GridProps) {
           index={i}
           track={track}
           lane={pattern.lanes[track.id]}
-          columns={columns}
+          start={page.start}
+          steps={page.steps}
           selected={track.id === props.selectedTrack}
           selectedStep={track.id === props.selectedTrack ? props.selectedStep : -1}
           status={track.sound.sampleId ? props.sampleStatus(track.sound.sampleId) : undefined}
           sampleName={track.sound.sampleId ? project.samples[track.sound.sampleId]?.name ?? '?' : 'No sample'}
-          props={props}
+          onPress={onPress}
+          onEnter={onEnter}
+          onSelect={props.onSelect}
+          onTrack={props.onTrack}
+          onLength={props.onLength}
+          onDropFiles={props.onDropFiles}
+          onDropSample={props.onDropSample}
+          onDropFolderFile={props.onDropFolderFile}
+          meterRef={props.meterRef}
+          rowRef={props.rowRef}
         />
       ))}
     </div>
   );
 }
 
-const Row = memo(function Row({
-  index,
-  track,
-  lane,
-  columns,
-  selected,
-  selectedStep,
-  status,
-  sampleName,
-  props,
-}: {
+interface RowProps extends Pick<GridProps, 'onSelect' | 'onTrack' | 'onLength' | 'onDropFiles' | 'onDropSample' | 'onDropFolderFile' | 'meterRef' | 'rowRef'> {
   index: number;
   track: Track;
   lane: Lane;
-  columns: number;
+  start: number;
+  steps: number;
   selected: boolean;
   selectedStep: number;
   status: SampleStatus | undefined;
   sampleName: string;
-  props: GridProps;
-}) {
+  onPress: (trackId: string, step: number, wasOn: boolean, shift: boolean) => void;
+  onEnter: (trackId: string, step: number, isOn: boolean, buttons: number) => void;
+}
+
+const Row = memo(function Row(props: RowProps) {
+  const { index, track, lane, start, steps, selected, selectedStep, status, sampleName } = props;
   const missing = status === 'missing' && track.sound.source === 'sample';
   return (
     <div
       className={`row ${selected ? 'selected' : ''} ${track.mute ? 'muted' : ''}`}
       role="row"
+      style={{ ['--track' as string]: trackColor(index) }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -115,8 +237,7 @@ const Row = memo(function Row({
         else if (folderFile) {
           const { folder, file } = JSON.parse(folderFile);
           props.onDropFolderFile(track.id, folder, file);
-        }
-        else if (e.dataTransfer.files.length) props.onDropFiles(track.id, [...e.dataTransfer.files]);
+        } else if (e.dataTransfer.files.length) props.onDropFiles(track.id, [...e.dataTransfer.files]);
       }}
     >
       <div className="track-head" onClick={() => props.onSelect(track.id)}>
@@ -164,19 +285,22 @@ const Row = memo(function Row({
         />
         <Meter refFn={props.meterRef(index)} label={`${track.name} level`} />
       </div>
-      <div className="steps" ref={props.rowRef(track.id)} data-len={lane.length}>
-        {Array.from({ length: columns }, (_, s) => (
-          <Cell
-            key={s}
-            trackId={track.id}
-            index={s}
-            step={lane.steps[s]}
-            inactive={s >= lane.length}
-            focused={s === selectedStep}
-            onToggle={props.onToggle}
-            onSelect={props.onSelect}
-          />
-        ))}
+      <div className="steps" ref={props.rowRef(track.id)} data-len={lane.length} data-start={start}>
+        {Array.from({ length: steps }, (_, i) => {
+          const s = start + i;
+          return (
+            <Cell
+              key={s}
+              trackId={track.id}
+              index={s}
+              step={lane.steps[s]}
+              inactive={s >= lane.length}
+              focused={s === selectedStep}
+              onPress={props.onPress}
+              onEnter={props.onEnter}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -188,21 +312,22 @@ const Cell = memo(function Cell({
   step,
   inactive,
   focused,
-  onToggle,
-  onSelect,
+  onPress,
+  onEnter,
 }: {
   trackId: string;
   index: number;
   step: Step;
   inactive: boolean;
   focused: boolean;
-  onToggle: (t: string, s: number) => void;
-  onSelect: (t: string, s: number) => void;
+  onPress: RowProps['onPress'];
+  onEnter: RowProps['onEnter'];
 }) {
   const label = `Step ${index + 1}${step.on ? `, on, velocity ${Math.round(step.velocity * 100)}%` : ', off'}${step.locked ? ', locked' : ''}`;
+  const group = Math.floor(index / 4) % 2 === 1 ? 'alt' : '';
   return (
     <button
-      className={`cell ${step.on ? 'on' : ''} ${step.locked ? 'locked' : ''} ${inactive ? 'inactive' : ''} ${index % 4 === 0 ? 'beat' : ''} ${focused ? 'focused' : ''}`}
+      className={`cell ${group} ${step.on ? 'on' : ''} ${step.locked ? 'locked' : ''} ${inactive ? 'inactive' : ''} ${index % 4 === 0 ? 'beat' : ''} ${index % STEPS_PER_BAR === 0 ? 'bar' : ''} ${focused ? 'focused' : ''}`}
       data-cell={`${trackId}:${index}`}
       data-step={index}
       role="gridcell"
@@ -211,12 +336,12 @@ const Cell = memo(function Cell({
       tabIndex={focused ? 0 : -1}
       disabled={inactive}
       onMouseDown={(e) => {
-        if (e.shiftKey) onSelect(trackId, index);
-        else {
-          onToggle(trackId, index);
-          onSelect(trackId, index);
-        }
+        if (e.button !== 0) return;
+        e.preventDefault(); // no text selection or focus jump while dragging
+        (e.currentTarget as HTMLElement).focus();
+        onPress(trackId, index, step.on, e.shiftKey);
       }}
+      onMouseEnter={(e) => onEnter(trackId, index, step.on, e.buttons)}
       onKeyDown={(e) => {
         // Space is play/stop everywhere; don't let it "click" the button.
         if (e.key === ' ') e.preventDefault();

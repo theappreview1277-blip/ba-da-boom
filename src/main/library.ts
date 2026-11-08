@@ -4,7 +4,7 @@
 
 import { promises as fs } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { FolderListing, Settings } from './ipc';
+import { STEP_LANES, TOOL_TABS, type FolderListing, type Settings } from './ipc';
 
 const MAX_FILES_PER_FOLDER = 5000;
 const MAX_DEPTH = 8;
@@ -25,7 +25,14 @@ export function cleanSettings(raw: any): Settings {
   if (Array.isArray(raw?.folders)) s.folders = [...new Set<string>(raw.folders.filter((f: unknown) => typeof f === 'string' && isAbsolute(f)))];
   if (Array.isArray(raw?.favourites)) s.favourites = [...new Set<string>(raw.favourites.filter((f: unknown) => typeof f === 'string' && f.length < 4096))].slice(0, MAX_FAVOURITES);
   const width = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 80 && v <= 1200 ? Math.round(v) : undefined);
-  s.layout = { left: width(raw?.layout?.left), right: width(raw?.layout?.right) };
+  const oneOf = <T extends string>(v: unknown, list: readonly T[]) => (list.includes(v as T) ? (v as T) : undefined);
+  s.layout = {
+    left: width(raw?.layout?.left),
+    right: width(raw?.layout?.right),
+    tool: oneOf(raw?.layout?.tool, TOOL_TABS),
+    toolsOpen: typeof raw?.layout?.toolsOpen === 'boolean' ? raw.layout.toolsOpen : undefined,
+    lane: oneOf(raw?.layout?.lane, STEP_LANES),
+  };
   return s;
 }
 

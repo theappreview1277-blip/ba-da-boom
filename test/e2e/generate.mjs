@@ -2,10 +2,12 @@
 // seeded randomise (track and all tracks), undo, and locks surviving save/open.
 import { join } from 'node:path';
 import { closeApp, launchApp, newProfile, runStandalone, stubDialogs } from './lib.mjs';
+import { openTool } from './lib.mjs';
 
 export async function run(t) {
   const { app, win, pageErrors } = await launchApp();
   try {
+    await openTool(win, 'Generate');
     const lane = (track) =>
       win.evaluate((track) => {
         const p = window.__engine['project'];

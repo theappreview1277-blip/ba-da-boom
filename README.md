@@ -24,6 +24,10 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
   high-pass with resonance, band-pass, vowel, drive, shape, bit crush, downsample, tremolo and phaser
 * Track and master meters, clip light, soft-clip safety stage
 * Save/open portable project folders, autosave and crash recovery, missing-sample handling
+* Main screen: the grid shows whole bars (pages turn with the playhead, Follow can be switched off),
+  click and drag to paint or erase steps, a lane under the grid to draw each step's loudness, chance or
+  timing, a colour per track, and the Beat library, Beat intelligence and Generate tools as tabs under the
+  grid (Hide folds them away; the open tab is remembered)
 * Double-click a `.badaboom` project in Explorer to open it (also while the app is open)
 * Error log in the app data folder (About → Show error log)
 * Offline WAV export (24-bit, 44.1 kHz) with effect tails, of a pattern or the whole song
@@ -57,6 +61,7 @@ Not yet built (planned): Strudel code editor. See `docs/PLAN.md`.
 | G | Song mode on / off (play the arrangement) |
 | L | Lock / unlock selected step (generators leave locked steps alone) |
 | Shift+click | Select a step without toggling it |
+| Click and drag | Paint steps on (or off, when you start on a lit step) |
 | Ctrl+Z, Ctrl+Y | Undo, redo |
 | Ctrl+C, Ctrl+V | Copy / paste track lane (add Shift for whole pattern) |
 | Delete, Shift+Delete | Clear lane / pattern |

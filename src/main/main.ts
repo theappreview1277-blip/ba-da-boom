@@ -386,7 +386,7 @@ function registerIpc() {
     updateSettings((s) => ({
       ...s,
       ...(Array.isArray(patch?.favourites) ? { favourites: patch.favourites } : {}),
-      ...(patch?.layout && typeof patch.layout === 'object' ? { layout: { left: patch.layout.left, right: patch.layout.right } } : {}),
+      ...(patch?.layout && typeof patch.layout === 'object' ? { layout: { ...s.layout, ...patch.layout } } : {}),
     })),
   );
   ipcMain.handle(CHANNELS.folderAdd, async () => {
