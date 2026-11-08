@@ -27,9 +27,14 @@ export const CHANNELS = {
   openFile: 'bdb:open-file',
   log: 'bdb:log',
   showLog: 'bdb:show-log',
+  updateState: 'bdb:update-state',
+  updateGet: 'bdb:update-get',
+  updateCheck: 'bdb:update-check',
+  updateDownload: 'bdb:update-download',
+  updateInstall: 'bdb:update-install',
 } as const;
 
-export const TOOL_TABS = ['library', 'beats', 'generate', 'pads'] as const;
+export const TOOL_TABS = ['library', 'beats', 'generate', 'pads', 'mixer'] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
 export const STEP_LANES = ['velocity', 'probability', 'micro'] as const;
 export type StepLane = (typeof STEP_LANES)[number];
@@ -81,6 +86,20 @@ export interface AppInfo {
   notices: string;
 }
 
+/**
+ * Where the app is with updates. "off" when updates can't work here (not the installed app).
+ * "none" after a check found nothing newer; "error" after a check or download failed.
+ */
+export type UpdateState =
+  | { state: 'off' }
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'none' }
+  | { state: 'available'; version: string }
+  | { state: 'downloading'; version: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; message: string };
+
 export interface KitSample {
   sound: string;
   index: number;
@@ -116,6 +135,8 @@ export interface Settings {
     lane?: StepLane;
   };
   sound: SoundSettings;
+  /** The welcome screen has been seen, so it is not shown at start-up any more. */
+  welcomed?: boolean;
 }
 
 export interface FolderListing {
@@ -154,7 +175,7 @@ export interface DesktopApi {
   onKitProgress(cb: (p: KitProgress) => void): void;
   settingsGet(): Promise<Settings>;
   /** Changes favourites and/or layout; returns the stored settings. */
-  settingsSet(patch: Partial<Pick<Settings, 'favourites' | 'layout' | 'sound'>>): Promise<Settings>;
+  settingsSet(patch: Partial<Pick<Settings, 'favourites' | 'layout' | 'sound' | 'welcomed'>>): Promise<Settings>;
   /** Asks for a folder and adds it to the browser. Null if cancelled. */
   folderAdd(): Promise<FolderListing | null>;
   folderRemove(path: string): Promise<void>;
@@ -174,4 +195,13 @@ export interface DesktopApi {
   log(level: 'info' | 'warn' | 'error', message: string): Promise<void>;
   /** Show the error log file in Explorer. */
   showLog(): Promise<void>;
+  /** Update news from the main process (checks, downloads). */
+  onUpdateState(cb: (s: UpdateState) => void): void;
+  updateGet(): Promise<UpdateState>;
+  /** Looks for a newer version on GitHub. */
+  updateCheck(): Promise<UpdateState>;
+  /** Downloads the version found by the last check. */
+  updateDownload(): Promise<void>;
+  /** Closes the app, installs the downloaded version and starts it again. */
+  updateInstall(): Promise<void>;
 }

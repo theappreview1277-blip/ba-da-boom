@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newProject } from '../src/model/defaults';
-import { commit, duplicatePattern, historyOf, movePattern, pasteLane, patternUsage, redo, removePattern, songAdd, toggleStep, undo } from '../src/model/ops';
+import { commit, duplicatePattern, historyOf, movePattern, pasteLane, renamePattern, patternUsage, redo, removePattern, songAdd, toggleStep, undo } from '../src/model/ops';
 
 describe('history and pattern ops', () => {
   it('undo/redo and merged slider gestures', () => {
@@ -33,6 +33,15 @@ describe('history and pattern ops', () => {
 });
 
 describe('pattern list', () => {
+  it('renames a pattern, tidying spaces; an empty name keeps the old one', () => {
+    const p = newProject();
+    const b = p.patterns[1].id;
+    const q = renamePattern(p, b, '  Verse   groove ');
+    expect(q.patterns.map((x) => x.name)).toEqual(['A', 'Verse groove', 'C', 'D']);
+    expect(renamePattern(q, b, '   ')).toBe(q);
+    expect(renamePattern(q, b, 'Verse groove')).toEqual(q);
+    expect(renamePattern(p, b, 'x'.repeat(40)).patterns[1].name).toHaveLength(24);
+  });
   it('moves a pattern: ABCD, C between A and B gives ACBD', () => {
     const p = newProject();
     const c = p.patterns[2].id;

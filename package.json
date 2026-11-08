@@ -29,6 +29,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "44.9.3",
     "electron-builder": "^26.18.0",
+    "electron-updater": "6.8.11",
     "esbuild": "^0.25.12",
     "playwright": "1.63.0",
     "react": "^19.3.1",
@@ -46,7 +47,7 @@
   "build": {
     "appId": "io.github.badaboom.drummachine",
     "productName": "Ba-da-boom",
-    "copyright": "Copyright © Ba-da-boom contributors. AGPL-3.0-or-later.",
+    "copyright": "Copyright \u00a9 Ba-da-boom contributors. AGPL-3.0-or-later.",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -54,6 +55,8 @@
     "files": [
       "dist/**/*",
       "!dist/**/*.map",
+      "!dist/acoustic/**/*",
+      "!dist/kits/**/*",
       "dist-electron/**/*",
       "!dist-electron/**/*.map",
       "package.json"
@@ -98,6 +101,13 @@
         "name": "Ba-da-boom project",
         "description": "Ba-da-boom project",
         "role": "Editor"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "theappreview1277-blip",
+        "repo": "ba-da-boom"
       }
     ]
   }

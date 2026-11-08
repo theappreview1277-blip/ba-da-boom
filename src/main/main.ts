@@ -13,6 +13,7 @@ import { CHANNELS, type OpenResult, type SaveRequest, type SaveResult, type Sett
 import { projectFileFromArgs } from './launch';
 import { initLog, log, logFile, rateLimiter } from './log';
 import { COMPRESSED_FILE } from '../model/audioFiles';
+import { Updates } from './updates';
 
 const isDev = process.env.BDB_DEV === '1';
 const RENDERER_DIR = join(__dirname, '..', 'dist');
@@ -175,7 +176,22 @@ function createWindow() {
     allowClose = true;
     win?.close();
   });
+  // "Restart to update": the renderer has already dealt with unsaved work. The update goes in
+  // once the window has closed (window-all-closed below).
+  ipcMain.removeHandler(CHANNELS.updateInstall);
+  ipcMain.handle(CHANNELS.updateInstall, () => {
+    if (updates?.state.state !== 'ready') return;
+    restartForUpdate = true;
+    clearTimeout(fallback);
+    allowClose = true;
+    win?.close();
+  });
 }
+
+let updates: Updates | null = null;
+let restartForUpdate = false;
+/** How long after start-up the app looks for updates (ms). */
+const UPDATE_CHECK_DELAY = Number(process.env.BDB_UPDATE_DELAY) || 8000;
 
 let tmpCounter = 0;
 async function atomicWrite(path: string, data: string | Uint8Array) {
@@ -389,6 +405,7 @@ function registerIpc() {
       ...(Array.isArray(patch?.favourites) ? { favourites: patch.favourites } : {}),
       ...(patch?.layout && typeof patch.layout === 'object' ? { layout: { ...s.layout, ...patch.layout } } : {}),
       ...(patch?.sound && typeof patch.sound === 'object' ? { sound: { ...s.sound, ...patch.sound } } : {}),
+      ...(typeof patch?.welcomed === 'boolean' ? { welcomed: patch.welcomed } : {}),
     })),
   );
   ipcMain.handle(CHANNELS.folderAdd, async () => {
@@ -484,10 +501,18 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'midi' || perm === 'midiSysex'));
     registerProtocol();
     registerIpc();
+    updates = new Updates((s) => win?.webContents.send(CHANNELS.updateState, s));
+    ipcMain.handle(CHANNELS.updateGet, () => updates!.state);
+    ipcMain.handle(CHANNELS.updateCheck, () => updates!.check());
+    ipcMain.handle(CHANNELS.updateDownload, () => updates!.download());
     createWindow();
+    setTimeout(() => updates?.check(true), UPDATE_CHECK_DELAY);
   });
 
-  app.on('window-all-closed', () => app.quit());
+  app.on('window-all-closed', () => {
+    if (restartForUpdate && updates) updates.install();
+    else app.quit();
+  });
   app.on('will-quit', () => {
     log('info', 'main', 'Closed normally');
     // Clean exit: remove the lock so the next start does not offer recovery.

@@ -7,7 +7,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -73,7 +73,11 @@ export async function crashApp(app) {
   killAll(processesFor(app.__profile));
 }
 
-export async function launchApp(profile = newProfile(), extraArgs = [], env = {}) {
+export async function launchApp(profile = newProfile(), extraArgs = [], env = {}, { welcome = false } = {}) {
+  // A new profile is a first start, which shows the welcome screen; tests skip it
+  // (as if it had been seen) unless they ask for it.
+  const settings = join(profile, 'settings.json');
+  if (!welcome && !existsSync(settings)) writeFileSync(settings, '{"welcomed": true}');
   const exe = process.env.ELECTRON_EXE;
   const args = exe ? [] : ['.'];
   if (process.platform === 'linux') args.push('--no-sandbox');

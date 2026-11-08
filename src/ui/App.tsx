@@ -21,6 +21,8 @@ import {
   setTrack,
   setTrackSound,
   movePattern,
+  renamePattern,
+  PATTERN_NAME_MAX,
   patternUsage,
   removePattern,
   songAdd,
@@ -32,7 +34,7 @@ import {
 import { applySteps, randomiseLane } from '../model/generate';
 import { FACTORY_SAMPLES } from '../model/factory';
 import { kitAssignments, kitLabel, kitSampleName } from '../model/kits';
-import type { FolderListing, KitProgress, KitSample, Settings, SoundSettings as SoundPrefs, StepLane as LaneKind, ToolTab } from '../main/ipc';
+import type { FolderListing, KitProgress, KitSample, Settings, SoundSettings as SoundPrefs, StepLane as LaneKind, ToolTab, UpdateState } from '../main/ipc';
 import { parseProject, serializeProject } from '../model/serialize';
 import { STEPS_PER_BAR, type Project, type SampleRef } from '../model/types';
 import { NumberField, Slider, db } from './controls';
@@ -55,7 +57,10 @@ import { useUiStore } from './store';
 import { SAMPLE_FILE, sampleName } from '../model/audioFiles';
 import { toWav } from '../engine/audio/convert';
 import { Pads } from './Pads';
+import { Mixer } from './Mixer';
+import { Logo } from './Logo';
 import { SoundSettings } from './SoundSettings';
+import { UpdateBanner, updateText } from './Updates';
 import { findOutput, listOutputs, Midi, type MidiState, type OutputDevice } from './devices';
 import { hitStep, noteToTrack, PAD_KEYS } from '../model/live';
 
@@ -66,6 +71,7 @@ const TOOLS: { id: ToolTab; label: string; title: string }[] = [
   { id: 'beats', label: 'Beat intelligence', title: 'Style generator, complete my beat, fills and humanise' },
   { id: 'generate', label: 'Generate', title: 'Euclidean rhythms, randomise and variations' },
   { id: 'pads', label: 'Pads', title: 'Drum pads to play and record live, with the mouse, the keyboard or a MIDI controller' },
+  { id: 'mixer', label: 'Mixer', title: 'Every track side by side: level, pan, reverb and delay, mute and solo' },
 ];
 
 const patternName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? String(Math.floor(i / 26) + 1) : '');
@@ -74,9 +80,10 @@ type Modal =
   | { kind: 'recover'; text: string; missing: string[]; launch: string | null }
   | { kind: 'export' }
   | { kind: 'settings' }
+  | { kind: 'welcome' }
   | { kind: 'removePattern'; id: string }
   | { kind: 'about'; notices: string; version: string; platform: string; logFile: string }
-  | { kind: 'unsaved'; then: 'close' | 'new' | 'open'; path?: string }
+  | { kind: 'unsaved'; then: 'close' | 'new' | 'open' | 'update'; path?: string }
   | null;
 
 export function App() {
@@ -98,6 +105,11 @@ export function App() {
   const [queuedPattern, setQueuedPattern] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
+  /** The pattern whose name is being typed in the pattern bar. */
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [update, setUpdate] = useState<UpdateState>({ state: 'idle' });
+  // "Later" hides the corner note until the update moves on (say, from downloading to ready).
+  const [updateLater, setUpdateLater] = useState<string | null>(null);
   const dirty = state.savedProject !== project;
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -194,6 +206,10 @@ export function App() {
   }, []);
   const trackMeters = useRef<(HTMLDivElement | null)[]>([]);
   const meterRef = useCallback((i: number) => (el: HTMLDivElement | null) => void (trackMeters.current[i] = el), []);
+  const mixerMeters = useRef<(HTMLDivElement | null)[]>([]);
+  const mixerMeterRef = useCallback((i: number) => (el: HTMLDivElement | null) => void (mixerMeters.current[i] = el), []);
+  const mixerMaster = useRef<HTMLDivElement | null>(null);
+  const mixerMasterRef = useCallback((el: HTMLDivElement | null) => void (mixerMaster.current = el), []);
   const masterL = useRef<HTMLDivElement | null>(null);
   const masterR = useRef<HTMLDivElement | null>(null);
   const clipRef = useRef<HTMLButtonElement | null>(null);
@@ -263,7 +279,10 @@ export function App() {
       m.tracks.forEach((v, i) => {
         const el = trackMeters.current[i];
         if (el) el.style.transform = `scaleY(${level(v)})`;
+        const mx = mixerMeters.current[i];
+        if (mx) mx.style.transform = `scaleY(${level(v)})`;
       });
+      if (mixerMaster.current) mixerMaster.current.style.transform = `scaleY(${level(Math.max(m.left, m.right))})`;
       if (masterL.current) masterL.current.style.transform = `scaleX(${level(m.left)})`;
       if (masterR.current) masterR.current.style.transform = `scaleX(${level(m.right)})`;
       clipRef.current?.classList.toggle('on', m.clip);
@@ -540,6 +559,11 @@ export function App() {
     }
     return { left, right, room, custom: layout.left !== undefined || layout.right !== undefined };
   }, [winWidth, layout]);
+  /** Close the welcome screen; it is not shown at start-up again (About shows it). */
+  const endWelcome = useCallback(() => {
+    setModal(null);
+    desktop.settingsSet({ welcomed: true }).catch(() => {});
+  }, []);
   const saveLayout = useCallback((next: Settings['layout']) => {
     setLayout(next);
     desktop.settingsSet({ layout: next }).catch(() => {});
@@ -772,17 +796,26 @@ export function App() {
     },
     [newDoc, open],
   );
+  const restartToUpdate = useCallback(async () => {
+    await desktop.autosaveWrite(serializeProject(projectRef.current)).catch(() => {});
+    if (stateRef.current.savedProject !== projectRef.current) setModal({ kind: 'unsaved', then: 'update' });
+    else await desktop.updateInstall();
+  }, []);
   const guardedRef = useRef(guarded);
   guardedRef.current = guarded;
 
   // --- autosave and recovery, and project files opened from Windows ---
   useEffect(() => {
-    Promise.all([desktop.autosaveRecover(), desktop.launchFile().catch(() => null)]).then(([r, launch]) => {
+    Promise.all([desktop.autosaveRecover(), desktop.launchFile().catch(() => null), desktop.settingsGet().catch(() => null)]).then(([r, launch, settings]) => {
       // Unsaved work from a crash comes first; the file opens if the user starts fresh.
       if (r) setModal({ kind: 'recover', text: r.text, missing: r.missing, launch });
       else if (launch) guardedRef.current('open', launch);
+      // The first time the app starts on its own, say hello.
+      else if (settings && !settings.welcomed) setModal({ kind: 'welcome' });
     });
     desktop.onOpenFile((path) => guardedRef.current('open', path));
+    desktop.onUpdateState(setUpdate);
+    desktop.updateGet().then(setUpdate).catch(() => {});
     desktop.onBeforeClose(async () => {
       await desktop.autosaveWrite(serializeProject(projectRef.current)).catch(() => {});
       if (stateRef.current.savedProject !== projectRef.current) {
@@ -921,6 +954,9 @@ export function App() {
       } else if (ctrl && k === 'd') {
         e.preventDefault();
         edit((q) => duplicatePattern(q, q.currentPatternId));
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        setRenaming(p.currentPatternId);
       } else if (ctrl && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();
         if (p.patterns.length > 1) askRemovePattern(p.currentPatternId);
@@ -1001,7 +1037,10 @@ export function App() {
   return (
     <div className="app">
       <header className={`topbar ${compact ? Array.from({ length: compact }, (_, i) => `c${i + 1}`).join(' ') : ''}`} ref={topbarRef}>
-        <div className="brand">Ba-da-boom</div>
+        <div className="brand">
+          <Logo size={22} />
+          <span className="lbl">Ba-da-boom</span>
+        </div>
         <div className="group" role="toolbar" aria-label="File">
           <button className="tb" onClick={() => guarded('new')} title="New project" aria-label="New"><Icon name="new" /><span className="lbl">New</span></button>
           <button className="tb" onClick={() => guarded('open')} title="Open project (Ctrl+O)" aria-label="Open"><Icon name="open" /><span className="lbl">Open</span></button>
@@ -1050,12 +1089,33 @@ export function App() {
       </header>
 
       <nav className="patternbar" aria-label="Patterns">
-        {project.patterns.map((pt, i) => (
+        {project.patterns.map((pt, i) => renaming === pt.id ? (
+          <input
+            key={pt.id}
+            className="pattern-rename"
+            aria-label={`New name for pattern ${pt.name}`}
+            defaultValue={pt.name}
+            maxLength={PATTERN_NAME_MAX}
+            autoFocus
+            onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setRenaming(null);
+            }}
+            onBlur={(e) => {
+              const name = e.target.value;
+              setRenaming(null);
+              edit((p) => renamePattern(p, pt.id, name));
+            }}
+          />
+        ) : (
           <button
             key={pt.id}
             className={`pattern-btn ${pt.id === project.currentPatternId ? 'current' : ''} ${pt.id === audiblePattern ? 'playing' : ''} ${pt.id === queuedPattern ? 'queued' : ''}`}
             onClick={() => selectPattern(pt.id)}
-            title={`Pattern ${pt.name}${i < 8 ? ` (${i + 1})` : ''}. While playing, switches at the next bar. Drag to reorder.`}
+            onDoubleClick={() => setRenaming(pt.id)}
+            title={`Pattern ${pt.name}${i < 8 ? ` (${i + 1})` : ''}. While playing, switches at the next bar. Drag to reorder, double-click to rename.`}
             {...reorderProps('application/x-bdb-pattern', i, (from, to) => edit((p) => movePattern(p, p.patterns[from].id, to)))}
           >
             {pt.name}
@@ -1069,6 +1129,7 @@ export function App() {
           +
         </button>
         <span className="sep" />
+        <button className="small" onClick={() => setRenaming(project.currentPatternId)} title="Give this pattern a name (F2, or double-click it)">Rename</button>
         <button className="small" onClick={() => edit((p) => duplicatePattern(p, p.currentPatternId))} title="Duplicate pattern (Ctrl+D)">Duplicate</button>
         <button className="small" onClick={() => edit((p) => clearPattern(p, p.currentPatternId))} title="Clear every step in this pattern (Shift+Delete)">Clear</button>
         <button className="small" disabled={project.patterns.length <= 1} onClick={() => askRemovePattern(project.currentPatternId)} title="Remove this pattern from the project (Ctrl+Delete)">Remove</button>
@@ -1314,6 +1375,19 @@ export function App() {
                       onSettings={() => setModal({ kind: 'settings' })}
                     />
                   </div>
+                  <div className="tool-page" hidden={tool !== 'mixer'}>
+                    <Mixer
+                      tracks={project.tracks}
+                      masterVolume={project.masterVolume}
+                      selectedTrack={state.selectedTrack}
+                      meterRef={mixerMeterRef}
+                      masterMeterRef={mixerMasterRef}
+                      onSound={(id, patch, k) => edit((p) => setTrackSound(p, id, patch), k && `sound:${id}:${k}`)}
+                      onTrack={onTrack}
+                      onSelect={(id) => onSelect(id)}
+                      onMaster={(v, k) => edit((p) => ({ ...p, masterVolume: v }), k)}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1358,6 +1432,9 @@ export function App() {
       </footer>
 
       {toast && <div className="toast" role="status">{toast}</div>}
+      {updateLater !== update.state && (
+        <UpdateBanner update={update} onDownload={() => desktop.updateDownload()} onRestart={restartToUpdate} onLater={() => setUpdateLater(update.state)} />
+      )}
 
       {modal?.kind === 'recover' && (
         <Dialog title="Recover unsaved work?">
@@ -1384,6 +1461,7 @@ export function App() {
               const { then, path } = modal;
               setModal(null);
               if (then === 'close') await desktop.closeReady();
+              else if (then === 'update') await desktop.updateInstall();
               else if (then === 'new') newDoc();
               else open(path);
             }}>Don't save</button>
@@ -1392,6 +1470,7 @@ export function App() {
               if (!(await save(false))) return;
               setModal(null);
               if (then === 'close') await desktop.closeReady();
+              else if (then === 'update') await desktop.updateInstall();
               else if (then === 'new') newDoc();
               else open(path);
             }}>Save</button>
@@ -1462,6 +1541,33 @@ export function App() {
         </Dialog>
       )}
 
+      {modal?.kind === 'welcome' && (
+        <Dialog title="Welcome to Ba-da-boom" wide>
+          <div className="welcome">
+            <Logo size={72} />
+            <div>
+              <p className="welcome-lead">Make drum beats: pick one, press play, then make it yours.</p>
+              <ol className="welcome-steps">
+                <li>
+                  <strong>Pick a beat</strong> from the Beat library under the grid (Amen, Funky Drummer, house, trap and more), or click and drag on the grid to paint your own.
+                </li>
+                <li>
+                  <strong>Press Space</strong> to play and stop. Number keys 1–8 switch patterns.
+                </li>
+                <li>
+                  <strong>Shape the sound</strong> with the knobs on the right, balance it in the Mixer, and play along on the Pads. Ctrl+Z undoes anything.
+                </li>
+              </ol>
+            </div>
+          </div>
+          <div className="actions">
+            <button onClick={() => { endWelcome(); guarded('open'); }}>Open a project…</button>
+            <button onClick={endWelcome}>Start with this beat</button>
+            <button className="primary" onClick={() => { endWelcome(); saveLayout({ ...layout, tool: 'library', toolsOpen: true }); }}>Browse the Beat library</button>
+          </div>
+        </Dialog>
+      )}
+
       {modal?.kind === 'settings' && (
         <Dialog title="Settings" wide>
           <SoundSettings
@@ -1483,6 +1589,18 @@ export function App() {
       {modal?.kind === 'about' && (
         <Dialog title="About Ba-da-boom" wide>
           <p>Version {modal.version} · {modal.platform}</p>
+          <div className="about-update">
+            {update.state === 'ready' ? (
+              <button className="primary" onClick={() => { setModal(null); restartToUpdate(); }}>Restart to update</button>
+            ) : update.state === 'available' ? (
+              <button className="primary" onClick={() => desktop.updateDownload()}>Download {update.version}</button>
+            ) : (
+              update.state !== 'off' && (
+                <button disabled={update.state === 'checking' || update.state === 'downloading'} onClick={() => desktop.updateCheck().then(setUpdate)}>Check for updates</button>
+              )
+            )}
+            <span className="update-text" role="status">{updateText(update)}</span>
+          </div>
           <p>
             Ba-da-boom is free software under the GNU Affero General Public License v3.0 or later. Its pattern engine and audio
             engine are <strong>Strudel</strong> (strudel.cc), © Strudel contributors, also AGPL-3.0-or-later. You can get the
@@ -1491,6 +1609,7 @@ export function App() {
           <p>Factory sounds are synthesised by the project and released under CC0 1.0. The Acoustic Kit is from Virtuosity Drums (Austin McMahon, Virtuosity Musical Instruments, with percussion from VSCO 2), also CC0 1.0.</p>
           <pre className="notices">{modal.notices || 'Third-party notices are included with the installed app.'}</pre>
           <div className="actions">
+            <button onClick={() => setModal({ kind: 'welcome' })}>Welcome screen</button>
             {inElectron && <button onClick={() => desktop.showLog()} title={modal.logFile}>Show error log</button>}
             <button className="primary" onClick={() => setModal(null)}>Close</button>
           </div>

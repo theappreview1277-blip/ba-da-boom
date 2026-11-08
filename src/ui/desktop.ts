@@ -93,6 +93,15 @@ const browserApi: DesktopApi = {
     ((window as any).__log ??= []).push(`${level}: ${message}`);
   },
   async showLog() {},
+  onUpdateState() {},
+  async updateGet() {
+    return { state: 'off' };
+  },
+  async updateCheck() {
+    return { state: 'off' };
+  },
+  async updateDownload() {},
+  async updateInstall() {},
 };
 
 export const desktop: DesktopApi = window.bdb ?? browserApi;

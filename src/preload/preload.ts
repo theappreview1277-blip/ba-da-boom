@@ -36,6 +36,13 @@ const api: DesktopApi = {
   },
   log: (level, message) => ipcRenderer.invoke(CHANNELS.log, level, message),
   showLog: () => ipcRenderer.invoke(CHANNELS.showLog),
+  onUpdateState: (cb) => {
+    ipcRenderer.on(CHANNELS.updateState, (_e, s) => cb(s));
+  },
+  updateGet: () => ipcRenderer.invoke(CHANNELS.updateGet),
+  updateCheck: () => ipcRenderer.invoke(CHANNELS.updateCheck),
+  updateDownload: () => ipcRenderer.invoke(CHANNELS.updateDownload),
+  updateInstall: () => ipcRenderer.invoke(CHANNELS.updateInstall),
 };
 
 contextBridge.exposeInMainWorld('bdb', api);

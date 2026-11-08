@@ -100,6 +100,9 @@ select,
   flex-wrap: wrap;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--accent);
@@ -134,6 +137,7 @@ button.tb {
 .topbar.c1 .settings-btn .lbl,
 .topbar.c2 .transport .toggle .lbl,
 .topbar.c3 .view-toggle .lbl,
+.topbar.c3 .brand .lbl,
 .topbar.c4 .transport .play .lbl {
   display: none;
 }
@@ -269,6 +273,21 @@ button.tb {
 .pattern-btn {
   min-width: 38px;
   font-weight: 600;
+}
+.pattern-btn {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pattern-rename {
+  width: 140px;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 3px 6px;
 }
 .pattern-btn.current {
   border-color: var(--accent);
@@ -1519,4 +1538,238 @@ button.link {
 .settings .hint,
 .settings .warn {
   margin: 6px 0 0;
+}
+
+/* The sound panel: knobs in rows, menus across the full width. */
+.sound-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 6px 4px;
+  margin: 4px 0 8px;
+}
+.sound-grid .choice {
+  grid-column: 1 / -1;
+}
+.panel-section .slider.knob {
+  margin: 0;
+}
+.slider.knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  padding: 3px 0;
+  border-radius: 6px;
+}
+.slider.knob:hover {
+  background: var(--panel-2);
+}
+.slider.knob label {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.slider.knob output {
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+}
+.slider.knob.disabled {
+  opacity: 0.45;
+}
+.knob-dial {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+.knob-dial svg {
+  display: block;
+  fill: none;
+  stroke-linecap: round;
+}
+.knob-track {
+  stroke: var(--line);
+  stroke-width: 4;
+}
+.knob-value {
+  stroke: var(--accent);
+  stroke-width: 4;
+}
+.knob-pointer {
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+.slider.knob .knob-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.knob-dial:has(.knob-input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 50%;
+}
+
+/* Mixer (tool tab) */
+.mixer {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.strip {
+  flex: 1 0 58px;
+  max-width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px 6px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border-top: 3px solid var(--track, var(--accent));
+}
+.strip.selected {
+  outline: 1px solid var(--track);
+}
+.strip.silent {
+  opacity: 0.55;
+}
+.strip-name {
+  font-size: 11px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.strip-num {
+  color: var(--track);
+}
+.strip .slider.knob {
+  padding: 0;
+}
+.strip .knob-dial,
+.strip .knob-dial svg {
+  width: 28px;
+  height: 28px;
+}
+.strip .slider.knob label,
+.strip .slider.knob output {
+  font-size: 10px;
+}
+.strip-sends {
+  display: flex;
+  gap: 0;
+}
+.strip-fader {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: 84px;
+  margin-top: 2px;
+}
+.fader {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 22px;
+  height: 100%;
+  margin: 0;
+  accent-color: var(--track, var(--accent));
+}
+.strip-meter.meter.v {
+  width: 6px;
+  height: 100%;
+}
+.strip-db {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.strip-ms {
+  display: flex;
+  gap: 3px;
+}
+.strip-ms button {
+  min-width: 24px;
+  padding: 1px 4px;
+}
+.strip-ms .on.mute {
+  background: var(--warn);
+  color: #111;
+}
+.strip-ms .on.solo {
+  background: var(--accent);
+  color: #111;
+}
+.master-strip {
+  border-top-color: var(--text);
+  justify-content: flex-start;
+}
+
+/* Welcome screen */
+.welcome {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+.welcome .logo {
+  flex: 0 0 auto;
+}
+.welcome-lead {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.welcome-steps {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.5;
+}
+.welcome-steps li {
+  margin-bottom: 6px;
+}
+
+/* --- update note (bottom right) and the update line in About --- */
+.update-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 36px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(520px, calc(100vw - 32px));
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px 8px 14px;
+  box-shadow: 0 6px 24px #0008;
+}
+.update-banner span:first-child {
+  flex: 1;
+}
+.update-banner progress {
+  width: 120px;
+}
+.update-pct {
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5em;
+  text-align: right;
+}
+.about-update {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+.update-text {
+  color: var(--muted);
 }

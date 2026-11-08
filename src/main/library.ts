@@ -44,6 +44,7 @@ export function cleanSettings(raw: any): Settings {
     padKeys: flag(raw?.sound?.padKeys),
     quantise: flag(raw?.sound?.quantise),
   };
+  if (raw?.welcomed === true) s.welcomed = true;
   return s;
 }
 
