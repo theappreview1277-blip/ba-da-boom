@@ -61,9 +61,9 @@ export async function run(t) {
     await win.click('button:has-text("Add folder…")');
     await folderGroup().waitFor({ timeout: 10000 }).catch(() => {});
     const names = await folderGroup().locator('li .name').allTextContents();
-    t.check('Add folder lists the WAV files in it and its subfolders', JSON.stringify(names) === JSON.stringify(['Fake', 'Kicks/Kick 01', 'Kicks/Kick 02', 'Loose', 'Snares/Snare A']), names.join(', '));
+    t.check('Add folder lists the sound files in it and its subfolders', JSON.stringify(names) === JSON.stringify(['Fake', 'Kicks/Kick 01', 'Kicks/Kick 02', 'Loose', 'Snares/Snare A']), names.join(', '));
     t.check('the folder group is named after the folder', (await folderGroup().locator('h4').textContent()) === 'My Samples');
-    t.check('the message says how many files were found', /My Samples: 5 WAV files/.test(await toast()), await toast());
+    t.check('the message says how many files were found', /My Samples: 5 sound files/.test(await toast()), await toast());
 
     const before = await project();
     await folderGroup().locator('li:has-text("Kicks/Kick 01")').click();

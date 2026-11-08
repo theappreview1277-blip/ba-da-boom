@@ -52,6 +52,8 @@ import { Perform } from './Perform';
 import { SongBar } from './SongBar';
 import { reorderProps } from './reorder';
 import { useUiStore } from './store';
+import { SAMPLE_FILE, sampleName } from '../model/audioFiles';
+import { toWav } from '../engine/audio/convert';
 
 const AUTOSAVE_MS = 5000;
 
@@ -341,15 +343,15 @@ export function App() {
     async (files: File[], assignTo?: string) => {
       let lastId: string | null = null;
       for (const f of files) {
-        if (!/\.wav$/i.test(f.name)) {
-          notify(`${f.name}: only WAV files are supported in this version.`);
+        if (!SAMPLE_FILE.test(f.name)) {
+          notify(`${f.name}: use WAV, MP3, FLAC or OGG sound files.`);
           continue;
         }
         try {
-          const bytes = new Uint8Array(await f.arrayBuffer());
+          const bytes = await toWav(f.name, new Uint8Array(await f.arrayBuffer()));
           const { file } = await desktop.importSample(f.name, bytes);
           const id = `user:${file}`;
-          const ref: SampleRef = { id, name: f.name.replace(/\.wav$/i, ''), source: 'user', file, originalName: f.name };
+          const ref: SampleRef = { id, name: sampleName(f.name), source: 'user', file, originalName: f.name };
           edit((p) => ({ ...p, samples: { ...p.samples, [id]: ref } }));
           lastId = id;
         } catch (e) {
@@ -461,9 +463,10 @@ export function App() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   const folderSample = useCallback(async (folder: string, file: string): Promise<SampleRef> => {
-    const { file: pool } = await desktop.folderRead(folder, file);
     const base = file.split('/').pop()!;
-    return { id: `user:${pool}`, name: base.replace(/\.wav$/i, ''), source: 'user', file: pool, originalName: base };
+    const got = await desktop.folderRead(folder, file);
+    const pool = 'file' in got ? got.file : (await desktop.importSample(base, await toWav(base, got.bytes))).file;
+    return { id: `user:${pool}`, name: sampleName(base), source: 'user', file: pool, originalName: base };
   }, []);
   const folderError = useCallback((file: string, e: unknown) => fail(`Could not use ${file}: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : e}`), [fail]);
   const auditionFolderFile = useCallback(
@@ -494,7 +497,7 @@ export function App() {
     const l = await desktop.folderAdd().catch(() => null);
     if (!l) return;
     setFolders((fs) => [...fs.filter((f) => f.path !== l.path), l]);
-    notify(`Added ${l.path}: ${l.files.length}${l.truncated ? '+' : ''} WAV file${l.files.length === 1 ? '' : 's'}`);
+    notify(`Added ${l.path}: ${l.files.length}${l.truncated ? '+' : ''} sound file${l.files.length === 1 ? '' : 's'}`);
   }, [notify]);
   const removeFolder = useCallback(
     async (path: string) => {

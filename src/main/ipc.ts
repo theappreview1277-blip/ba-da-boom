@@ -103,7 +103,7 @@ export interface Settings {
 
 export interface FolderListing {
   path: string;
-  /** .wav files, relative to the folder with / separators. */
+  /** Sound files, relative to the folder with / separators. */
   files: string[];
   /** More files than the browser lists. */
   truncated: boolean;
@@ -143,8 +143,8 @@ export interface DesktopApi {
   folderRemove(path: string): Promise<void>;
   /** Scans every added folder again. */
   folderList(): Promise<FolderListing[]>;
-  /** Copies a WAV from an added folder into the sample pool. */
-  folderRead(folder: string, file: string): Promise<{ file: string }>;
+  /** Copies a WAV from an added folder into the sample pool; other formats come back as bytes to convert. */
+  folderRead(folder: string, file: string): Promise<{ file: string } | { bytes: Uint8Array }>;
   onBeforeClose(cb: () => void): void;
   closeReady(): Promise<void>;
   /** The renderer is asking the user about unsaved changes; don't force-close. */

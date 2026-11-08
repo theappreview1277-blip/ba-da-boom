@@ -12,6 +12,7 @@ import { cleanSettings, readSettings, resolveInFolder, scanFolder } from './libr
 import { CHANNELS, type OpenResult, type SaveRequest, type SaveResult, type Settings } from './ipc';
 import { projectFileFromArgs } from './launch';
 import { initLog, log, logFile, rateLimiter } from './log';
+import { COMPRESSED_FILE } from '../model/audioFiles';
 
 const isDev = process.env.BDB_DEV === '1';
 const RENDERER_DIR = join(__dirname, '..', 'dist');
@@ -405,6 +406,7 @@ function registerIpc() {
     if (!stat?.isFile()) throw new Error('The file is no longer there.');
     if (stat.size > MAX_SAMPLE_BYTES) throw new Error('Sample is larger than 200 MB.');
     const buf = await fs.readFile(full);
+    if (COMPRESSED_FILE.test(full)) return { bytes: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) };
     if (!isWav(buf)) throw new Error(`${basename(full)} is not a WAV file.`);
     return { file: await addToPool(buf) };
   });

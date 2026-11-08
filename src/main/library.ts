@@ -5,6 +5,7 @@
 import { promises as fs } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { STEP_LANES, TOOL_TABS, type FolderListing, type Settings } from './ipc';
+import { SAMPLE_FILE } from '../model/audioFiles';
 
 const MAX_FILES_PER_FOLDER = 5000;
 const MAX_DEPTH = 8;
@@ -36,7 +37,7 @@ export function cleanSettings(raw: any): Settings {
   return s;
 }
 
-/** All .wav files under a folder, as paths relative to it with / separators, sorted. */
+/** All sound files (WAV, MP3, FLAC, OGG) under a folder, as paths relative to it with / separators, sorted. */
 export async function scanFolder(root: string): Promise<FolderListing> {
   const files: string[] = [];
   let truncated = false;
@@ -58,7 +59,7 @@ export async function scanFolder(root: string): Promise<FolderListing> {
       if (e.name.startsWith('.')) continue;
       const full = join(dir, e.name);
       if (e.isDirectory() && depth < MAX_DEPTH) await walk(full, depth + 1);
-      else if (e.isFile() && /\.wav$/i.test(e.name)) files.push(relative(root, full).split(sep).join('/'));
+      else if (e.isFile() && SAMPLE_FILE.test(e.name)) files.push(relative(root, full).split(sep).join('/'));
     }
   };
   await walk(root, 0);
@@ -68,7 +69,7 @@ export async function scanFolder(root: string): Promise<FolderListing> {
 /** The absolute path of a file in one of the user's folders, or null if it would leave that folder. */
 export function resolveInFolder(folders: string[], root: unknown, rel: unknown): string | null {
   if (typeof root !== 'string' || typeof rel !== 'string' || !folders.includes(root)) return null;
-  if (!/\.wav$/i.test(rel) || rel.includes('\0') || isAbsolute(rel)) return null;
+  if (!SAMPLE_FILE.test(rel) || rel.includes('\0') || isAbsolute(rel)) return null;
   const full = resolve(root, ...rel.split('/'));
   const back = relative(root, full);
   if (!back || back.startsWith('..') || isAbsolute(back)) return null;

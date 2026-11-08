@@ -75,7 +75,7 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
         </div>
         {s.source === 'sample' ? (
           <>
-            <div className="sample-line" title="Drag a sample from the browser or drop a WAV file on the track to change it">
+            <div className="sample-line" title="Drag a sample from the browser or drop a sound file (WAV, MP3, FLAC, OGG) on the track to change it">
               Sample: <strong>{sampleName}</strong>
             </div>
             <Waveform buffer={sampleBuffer} start={s.start} end={s.end} label={`Waveform of ${sampleName}`} />

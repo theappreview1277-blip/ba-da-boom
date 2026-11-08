@@ -3,6 +3,7 @@ import type { Project, SampleRef } from '../model/types';
 import type { SampleStatus } from '../engine/audio/engine';
 import type { FolderListing, KitProgress } from '../main/ipc';
 import { kitLabel } from '../model/kits';
+import { SAMPLE_ACCEPT, sampleName } from '../model/audioFiles';
 
 interface Props {
   project: Project;
@@ -68,7 +69,7 @@ export function SampleBrowser(props: Props) {
       title: s.originalName ?? s.name,
       sampleId: s.id,
     });
-    const fileItem = (folder: string, file: string): Item => ({ key: folderKey(folder, file), label: file.replace(/\.wav$/i, ''), title: `${folder} › ${file}`, folder, file });
+    const fileItem = (folder: string, file: string): Item => ({ key: folderKey(folder, file), label: sampleName(file), title: `${folder} › ${file}`, folder, file });
     const kitNames = [...new Set(all.map((s) => s.kit).filter((k): k is string => !!k))].sort();
     const samplesBy = (keep: (s: SampleRef) => boolean, prefix = '') => all.filter((s) => keep(s) && match(s.name)).map((s) => sampleItem(s, prefix));
     const favs = [
@@ -84,7 +85,7 @@ export function SampleBrowser(props: Props) {
       if (items.length) out.push({ title: kitLabel(k), items, total: items.length, empty: '' });
     }
     const imported = samplesBy((s) => s.source === 'user' && !s.kit);
-    out.push({ title: 'Imported', items: imported, total: imported.length, empty: f ? 'No matches' : 'Drop WAV files here' });
+    out.push({ title: 'Imported', items: imported, total: imported.length, empty: f ? 'No matches' : 'Drop sound files here' });
     for (const fo of folders) {
       const files = fo.files.filter(match);
       out.push({
@@ -92,7 +93,7 @@ export function SampleBrowser(props: Props) {
         folder: fo,
         items: files.slice(0, FOLDER_LIMIT).map((file) => fileItem(fo.path, file)),
         total: files.length,
-        empty: !fo.readable ? 'Folder not found. Is the drive connected?' : f ? 'No matches' : 'No WAV files in this folder',
+        empty: !fo.readable ? 'Folder not found. Is the drive connected?' : f ? 'No matches' : 'No sound files in this folder',
       });
     }
     return out;
@@ -158,7 +159,7 @@ export function SampleBrowser(props: Props) {
           Import…
           <input
             type="file"
-            accept=".wav,audio/wav"
+            accept={SAMPLE_ACCEPT}
             multiple
             hidden
             onChange={(e) => {
@@ -168,9 +169,9 @@ export function SampleBrowser(props: Props) {
           />
         </label>
       </div>
-      <p className="hint">Click to audition. Double-click or drag onto a track to assign. ☆ adds to favourites. Drop WAV files here to import.</p>
+      <p className="hint">Click to audition. Double-click or drag onto a track to assign. ☆ adds to favourites. Drop WAV, MP3, FLAC or OGG files here to import.</p>
       <div className="folder-actions">
-        <button className="small" onClick={props.onAddFolder} title="Add a folder of WAV files to this list. It is remembered next time.">
+        <button className="small" onClick={props.onAddFolder} title="Add a folder of sound files to this list. It is remembered next time.">
           Add folder…
         </button>
         {folders.length > 0 && (
