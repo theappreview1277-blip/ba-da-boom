@@ -274,6 +274,21 @@ button.tb {
   min-width: 38px;
   font-weight: 600;
 }
+.pattern-btn {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pattern-rename {
+  width: 140px;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 3px 6px;
+}
 .pattern-btn.current {
   border-color: var(--accent);
   color: var(--accent);

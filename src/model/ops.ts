@@ -165,6 +165,16 @@ export const songBars = (p: Project) => p.song.reduce((n, e) => n + e.bars, 0);
 // --- pattern list ---
 
 /** Move a pattern to position `to` in the list (pattern keys 1–8 follow the order). */
+/** Longest pattern name kept (the pattern buttons stay readable). */
+export const PATTERN_NAME_MAX = 24;
+
+/** Renames a pattern. Spaces at the ends go; an empty name keeps the old one. */
+export function renamePattern(p: Project, patternId: string, name: string): Project {
+  const clean = name.replace(/\s+/g, ' ').trim().slice(0, PATTERN_NAME_MAX);
+  if (!clean) return p;
+  return { ...p, patterns: p.patterns.map((pt) => (pt.id === patternId && pt.name !== clean ? { ...pt, name: clean } : pt)) };
+}
+
 export function movePattern(p: Project, patternId: string, to: number): Project {
   const from = p.patterns.findIndex((x) => x.id === patternId);
   const dest = Math.max(0, Math.min(p.patterns.length - 1, Math.round(to)));

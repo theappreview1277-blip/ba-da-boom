@@ -21,6 +21,8 @@ import {
   setTrack,
   setTrackSound,
   movePattern,
+  renamePattern,
+  PATTERN_NAME_MAX,
   patternUsage,
   removePattern,
   songAdd,
@@ -103,6 +105,8 @@ export function App() {
   const [queuedPattern, setQueuedPattern] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
+  /** The pattern whose name is being typed in the pattern bar. */
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>({ state: 'idle' });
   // "Later" hides the corner note until the update moves on (say, from downloading to ready).
   const [updateLater, setUpdateLater] = useState<string | null>(null);
@@ -950,6 +954,9 @@ export function App() {
       } else if (ctrl && k === 'd') {
         e.preventDefault();
         edit((q) => duplicatePattern(q, q.currentPatternId));
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        setRenaming(p.currentPatternId);
       } else if (ctrl && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();
         if (p.patterns.length > 1) askRemovePattern(p.currentPatternId);
@@ -1082,12 +1089,33 @@ export function App() {
       </header>
 
       <nav className="patternbar" aria-label="Patterns">
-        {project.patterns.map((pt, i) => (
+        {project.patterns.map((pt, i) => renaming === pt.id ? (
+          <input
+            key={pt.id}
+            className="pattern-rename"
+            aria-label={`New name for pattern ${pt.name}`}
+            defaultValue={pt.name}
+            maxLength={PATTERN_NAME_MAX}
+            autoFocus
+            onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setRenaming(null);
+            }}
+            onBlur={(e) => {
+              const name = e.target.value;
+              setRenaming(null);
+              edit((p) => renamePattern(p, pt.id, name));
+            }}
+          />
+        ) : (
           <button
             key={pt.id}
             className={`pattern-btn ${pt.id === project.currentPatternId ? 'current' : ''} ${pt.id === audiblePattern ? 'playing' : ''} ${pt.id === queuedPattern ? 'queued' : ''}`}
             onClick={() => selectPattern(pt.id)}
-            title={`Pattern ${pt.name}${i < 8 ? ` (${i + 1})` : ''}. While playing, switches at the next bar. Drag to reorder.`}
+            onDoubleClick={() => setRenaming(pt.id)}
+            title={`Pattern ${pt.name}${i < 8 ? ` (${i + 1})` : ''}. While playing, switches at the next bar. Drag to reorder, double-click to rename.`}
             {...reorderProps('application/x-bdb-pattern', i, (from, to) => edit((p) => movePattern(p, p.patterns[from].id, to)))}
           >
             {pt.name}
@@ -1101,6 +1129,7 @@ export function App() {
           +
         </button>
         <span className="sep" />
+        <button className="small" onClick={() => setRenaming(project.currentPatternId)} title="Give this pattern a name (F2, or double-click it)">Rename</button>
         <button className="small" onClick={() => edit((p) => duplicatePattern(p, p.currentPatternId))} title="Duplicate pattern (Ctrl+D)">Duplicate</button>
         <button className="small" onClick={() => edit((p) => clearPattern(p, p.currentPatternId))} title="Clear every step in this pattern (Shift+Delete)">Clear</button>
         <button className="small" disabled={project.patterns.length <= 1} onClick={() => askRemovePattern(project.currentPatternId)} title="Remove this pattern from the project (Ctrl+Delete)">Remove</button>
