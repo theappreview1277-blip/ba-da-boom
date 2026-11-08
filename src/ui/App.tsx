@@ -55,6 +55,7 @@ import { useUiStore } from './store';
 import { SAMPLE_FILE, sampleName } from '../model/audioFiles';
 import { toWav } from '../engine/audio/convert';
 import { Pads } from './Pads';
+import { Mixer } from './Mixer';
 import { SoundSettings } from './SoundSettings';
 import { findOutput, listOutputs, Midi, type MidiState, type OutputDevice } from './devices';
 import { hitStep, noteToTrack, PAD_KEYS } from '../model/live';
@@ -66,6 +67,7 @@ const TOOLS: { id: ToolTab; label: string; title: string }[] = [
   { id: 'beats', label: 'Beat intelligence', title: 'Style generator, complete my beat, fills and humanise' },
   { id: 'generate', label: 'Generate', title: 'Euclidean rhythms, randomise and variations' },
   { id: 'pads', label: 'Pads', title: 'Drum pads to play and record live, with the mouse, the keyboard or a MIDI controller' },
+  { id: 'mixer', label: 'Mixer', title: 'Every track side by side: level, pan, reverb and delay, mute and solo' },
 ];
 
 const patternName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? String(Math.floor(i / 26) + 1) : '');
@@ -194,6 +196,10 @@ export function App() {
   }, []);
   const trackMeters = useRef<(HTMLDivElement | null)[]>([]);
   const meterRef = useCallback((i: number) => (el: HTMLDivElement | null) => void (trackMeters.current[i] = el), []);
+  const mixerMeters = useRef<(HTMLDivElement | null)[]>([]);
+  const mixerMeterRef = useCallback((i: number) => (el: HTMLDivElement | null) => void (mixerMeters.current[i] = el), []);
+  const mixerMaster = useRef<HTMLDivElement | null>(null);
+  const mixerMasterRef = useCallback((el: HTMLDivElement | null) => void (mixerMaster.current = el), []);
   const masterL = useRef<HTMLDivElement | null>(null);
   const masterR = useRef<HTMLDivElement | null>(null);
   const clipRef = useRef<HTMLButtonElement | null>(null);
@@ -263,7 +269,10 @@ export function App() {
       m.tracks.forEach((v, i) => {
         const el = trackMeters.current[i];
         if (el) el.style.transform = `scaleY(${level(v)})`;
+        const mx = mixerMeters.current[i];
+        if (mx) mx.style.transform = `scaleY(${level(v)})`;
       });
+      if (mixerMaster.current) mixerMaster.current.style.transform = `scaleY(${level(Math.max(m.left, m.right))})`;
       if (masterL.current) masterL.current.style.transform = `scaleX(${level(m.left)})`;
       if (masterR.current) masterR.current.style.transform = `scaleX(${level(m.right)})`;
       clipRef.current?.classList.toggle('on', m.clip);
@@ -1312,6 +1321,19 @@ export function App() {
                       onQuantise={(on) => saveSound({ quantise: on })}
                       onPadKeys={(on) => saveSound({ padKeys: on })}
                       onSettings={() => setModal({ kind: 'settings' })}
+                    />
+                  </div>
+                  <div className="tool-page" hidden={tool !== 'mixer'}>
+                    <Mixer
+                      tracks={project.tracks}
+                      masterVolume={project.masterVolume}
+                      selectedTrack={state.selectedTrack}
+                      meterRef={mixerMeterRef}
+                      masterMeterRef={mixerMasterRef}
+                      onSound={(id, patch, k) => edit((p) => setTrackSound(p, id, patch), k && `sound:${id}:${k}`)}
+                      onTrack={onTrack}
+                      onSelect={(id) => onSelect(id)}
+                      onMaster={(v, k) => edit((p) => ({ ...p, masterVolume: v }), k)}
                     />
                   </div>
                 </div>

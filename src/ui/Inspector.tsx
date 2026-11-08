@@ -1,6 +1,9 @@
 import type { Step, Track, TrackSound } from '../model/types';
 import { FILTER_TYPES, RELEASE_FULL, SYNTH_WAVES, VOWELS } from '../model/types';
-import { Slider, db, hz, logFreq, pct, sec } from './controls';
+import { Knob, Slider, db, hz, logFreq, pct, sec } from './controls';
+import { defaultSound } from '../model/defaults';
+
+const d = defaultSound(null);
 import { Waveform } from './Waveform';
 
 interface Props {
@@ -86,27 +89,27 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
         ) : (
           <div className="sound-grid">
             <Choice label="Wave" value={s.wave} options={SYNTH_WAVES.map((w) => [w, WAVE_NAMES[w]])} onChange={(wave) => onSound({ wave })} title="Strudel's built-in oscillators, noises and synth kick" />
-            <Slider label="Note" value={s.note} min={24} max={96} step={1} format={noteName} onChange={(v, k) => onSound({ note: v }, k)} title="The synth's note; Pitch is added to it" />
+            <Knob reset={d.note} label="Note" value={s.note} min={24} max={96} step={1} format={noteName} onChange={(v, k) => onSound({ note: v }, k)} title="The synth's note; Pitch is added to it" />
           </div>
         )}
         <div className="sound-grid">
-          <Slider label="Volume" value={s.volume} min={0} max={1.5} format={db} onChange={(v, k) => onSound({ volume: v }, k)} />
-          <Slider label="Pan" value={s.pan} min={-1} max={1} format={(v) => (Math.abs(v) < 0.01 ? 'C' : v < 0 ? `L${Math.round(-v * 100)}` : `R${Math.round(v * 100)}`)} onChange={(v, k) => onSound({ pan: v }, k)} />
-          <Slider label="Pitch" value={s.pitch} min={-24} max={24} step={1} format={(v) => `${v > 0 ? '+' : ''}${v} st`} onChange={(v, k) => onSound({ pitch: v }, k)} />
+          <Knob reset={d.volume} label="Volume" value={s.volume} min={0} max={1.5} format={db} onChange={(v, k) => onSound({ volume: v }, k)} />
+          <Knob reset={d.pan} label="Pan" value={s.pan} min={-1} max={1} format={(v) => (Math.abs(v) < 0.01 ? 'C' : v < 0 ? `L${Math.round(-v * 100)}` : `R${Math.round(v * 100)}`)} onChange={(v, k) => onSound({ pan: v }, k)} />
+          <Knob reset={d.pitch} label="Pitch" value={s.pitch} min={-24} max={24} step={1} format={(v) => `${v > 0 ? '+' : ''}${v} st`} onChange={(v, k) => onSound({ pitch: v }, k)} />
           {s.source === 'sample' && (
             <>
-              <Slider label="Start" value={s.start} min={0} max={0.99} format={pct} onChange={(v, k) => onSound({ start: v }, k)} />
-              <Slider label="End" value={s.end} min={0.01} max={1} format={pct} onChange={(v, k) => onSound({ end: v }, k)} />
+              <Knob reset={d.start} label="Start" value={s.start} min={0} max={0.99} format={pct} onChange={(v, k) => onSound({ start: v }, k)} />
+              <Knob reset={d.end} label="End" value={s.end} min={0.01} max={1} format={pct} onChange={(v, k) => onSound({ end: v }, k)} />
             </>
           )}
         </div>
 
         <h4 className="sub-head">Envelope</h4>
         <div className="sound-grid">
-          <Slider label="Attack" value={s.attack} min={0} max={0.5} step={0.001} format={sec} onChange={(v, k) => onSound({ attack: v }, k)} />
-          <Slider label="Decay" value={s.decay} min={0} max={2} step={0.01} format={(v) => (v === 0 ? 'Off' : sec(v))} title="Fall from full level to the sustain level" onChange={(v, k) => onSound({ decay: v }, k)} />
-          <Slider label="Sustain" value={s.sustain} min={0} max={1} format={pct} title="Level after the decay (used when Decay is on)" onChange={(v, k) => onSound({ sustain: v }, k)} />
-          <Slider
+          <Knob reset={d.attack} label="Attack" value={s.attack} min={0} max={0.5} step={0.001} format={sec} onChange={(v, k) => onSound({ attack: v }, k)} />
+          <Knob reset={d.decay} label="Decay" value={s.decay} min={0} max={2} step={0.01} format={(v) => (v === 0 ? 'Off' : sec(v))} title="Fall from full level to the sustain level" onChange={(v, k) => onSound({ decay: v }, k)} />
+          <Knob reset={d.sustain} label="Sustain" value={s.sustain} min={0} max={1} format={pct} title="Level after the decay (used when Decay is on)" onChange={(v, k) => onSound({ sustain: v }, k)} />
+          <Knob reset={d.release}
             label="Release"
             value={s.release}
             min={0}
@@ -128,37 +131,37 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
         <h4 className="sub-head">Filter</h4>
         <div className="sound-grid">
           <Choice label="Type" value={s.filterType} options={FILTER_TYPES.map((f) => [f, FILTER_NAMES[f]])} onChange={(filterType) => onSound({ filterType })} title="12 dB, 24 dB (steeper) or ladder (warmer) filters" />
-          <Slider label="Low-pass" value={logFreq.toPos(s.lowpass)} min={0} max={1} step={0.001} format={(p) => (p >= 1 ? 'Off' : hz(logFreq.fromPos(p)))} onChange={(p, k) => onSound({ lowpass: logFreq.fromPos(p) }, k)} />
-          <Slider label="Resonance" value={s.resonance} min={0} max={30} step={0.1} format={(v) => (v === 0 ? 'Default' : v.toFixed(1))} onChange={(v, k) => onSound({ resonance: v }, k)} />
-          <Slider label="Filter env" value={s.filterEnv} min={-8} max={8} step={0.1} format={(v) => (v === 0 ? 'Off' : `${v > 0 ? '+' : ''}${v.toFixed(1)} oct`)} title="Sweeps the low-pass on every hit, up (+) or down (−), in octaves" onChange={(v, k) => onSound({ filterEnv: v }, k)} />
-          <Slider label="Env decay" value={s.filterDecay} min={0.01} max={2} step={0.01} format={sec} title="How long the filter sweep takes" onChange={(v, k) => onSound({ filterDecay: v }, k)} />
-          <Slider label="High-pass" value={logFreq.toPos(s.highpass)} min={0} max={1} step={0.001} format={(p) => (p <= 0 ? 'Off' : hz(logFreq.fromPos(p)))} onChange={(p, k) => onSound({ highpass: logFreq.fromPos(p) }, k)} />
-          <Slider label="HP resonance" value={s.hpResonance} min={0} max={30} step={0.1} format={(v) => (v === 0 ? 'Default' : v.toFixed(1))} onChange={(v, k) => onSound({ hpResonance: v }, k)} />
-          <Slider label="Band-pass" value={s.bandpass ? logFreq.toPos(s.bandpass) : 0} min={0} max={1} step={0.001} format={(p) => (p <= 0 ? 'Off' : hz(logFreq.fromPos(p)))} onChange={(p, k) => onSound({ bandpass: p <= 0 ? 0 : logFreq.fromPos(p) }, k)} />
-          <Slider label="Band Q" value={s.bandQ} min={0.1} max={30} step={0.1} format={(v) => v.toFixed(1)} onChange={(v, k) => onSound({ bandQ: v }, k)} />
+          <Knob reset={logFreq.toPos(d.lowpass)} label="Low-pass" value={logFreq.toPos(s.lowpass)} min={0} max={1} step={0.001} format={(p) => (p >= 1 ? 'Off' : hz(logFreq.fromPos(p)))} onChange={(p, k) => onSound({ lowpass: logFreq.fromPos(p) }, k)} />
+          <Knob reset={d.resonance} label="Resonance" value={s.resonance} min={0} max={30} step={0.1} format={(v) => (v === 0 ? 'Default' : v.toFixed(1))} onChange={(v, k) => onSound({ resonance: v }, k)} />
+          <Knob reset={d.filterEnv} label="Filter env" value={s.filterEnv} min={-8} max={8} step={0.1} format={(v) => (v === 0 ? 'Off' : `${v > 0 ? '+' : ''}${v.toFixed(1)} oct`)} title="Sweeps the low-pass on every hit, up (+) or down (−), in octaves" onChange={(v, k) => onSound({ filterEnv: v }, k)} />
+          <Knob reset={d.filterDecay} label="Env decay" value={s.filterDecay} min={0.01} max={2} step={0.01} format={sec} title="How long the filter sweep takes" onChange={(v, k) => onSound({ filterDecay: v }, k)} />
+          <Knob reset={logFreq.toPos(d.highpass)} label="High-pass" value={logFreq.toPos(s.highpass)} min={0} max={1} step={0.001} format={(p) => (p <= 0 ? 'Off' : hz(logFreq.fromPos(p)))} onChange={(p, k) => onSound({ highpass: logFreq.fromPos(p) }, k)} />
+          <Knob reset={d.hpResonance} label="HP resonance" value={s.hpResonance} min={0} max={30} step={0.1} format={(v) => (v === 0 ? 'Default' : v.toFixed(1))} onChange={(v, k) => onSound({ hpResonance: v }, k)} />
+          <Knob reset={0} label="Band-pass" value={s.bandpass ? logFreq.toPos(s.bandpass) : 0} min={0} max={1} step={0.001} format={(p) => (p <= 0 ? 'Off' : hz(logFreq.fromPos(p)))} onChange={(p, k) => onSound({ bandpass: p <= 0 ? 0 : logFreq.fromPos(p) }, k)} />
+          <Knob reset={d.bandQ} label="Band Q" value={s.bandQ} min={0.1} max={30} step={0.1} format={(v) => v.toFixed(1)} onChange={(v, k) => onSound({ bandQ: v }, k)} />
           <Choice label="Vowel" value={s.vowel} options={VOWELS.map((v) => [v, v ? v.toUpperCase() : 'Off'])} onChange={(vowel) => onSound({ vowel })} title="Formant filter that makes the sound speak a vowel" />
         </div>
 
         <h4 className="sub-head">Character</h4>
         <div className="sound-grid">
-          <Slider label="Drive" value={s.drive} min={0} max={10} step={0.1} format={(v) => (v === 0 ? 'Off' : v.toFixed(1))} onChange={(v, k) => onSound({ drive: v }, k)} />
-          <Slider label="Shape" value={s.shape} min={0} max={0.95} step={0.01} format={(v) => (v === 0 ? 'Off' : pct(v))} title="Waveshaping distortion" onChange={(v, k) => onSound({ shape: v }, k)} />
-          <Slider label="Bit crush" value={s.crush === 0 ? 17 : s.crush} min={1} max={17} step={1} format={(v) => (v >= 17 ? 'Off' : `${v} bit`)} title="Fewer bits = rougher" onChange={(v, k) => onSound({ crush: v >= 17 ? 0 : v }, k)} />
-          <Slider label="Downsample" value={s.coarse} min={1} max={32} step={1} format={(v) => (v <= 1 ? 'Off' : `÷${v}`)} title="Lowers the sample rate for a lo-fi sound" onChange={(v, k) => onSound({ coarse: v }, k)} />
+          <Knob reset={d.drive} label="Drive" value={s.drive} min={0} max={10} step={0.1} format={(v) => (v === 0 ? 'Off' : v.toFixed(1))} onChange={(v, k) => onSound({ drive: v }, k)} />
+          <Knob reset={d.shape} label="Shape" value={s.shape} min={0} max={0.95} step={0.01} format={(v) => (v === 0 ? 'Off' : pct(v))} title="Waveshaping distortion" onChange={(v, k) => onSound({ shape: v }, k)} />
+          <Knob reset={17} label="Bit crush" value={s.crush === 0 ? 17 : s.crush} min={1} max={17} step={1} format={(v) => (v >= 17 ? 'Off' : `${v} bit`)} title="Fewer bits = rougher" onChange={(v, k) => onSound({ crush: v >= 17 ? 0 : v }, k)} />
+          <Knob reset={d.coarse} label="Downsample" value={s.coarse} min={1} max={32} step={1} format={(v) => (v <= 1 ? 'Off' : `÷${v}`)} title="Lowers the sample rate for a lo-fi sound" onChange={(v, k) => onSound({ coarse: v }, k)} />
         </div>
 
         <h4 className="sub-head">Movement</h4>
         <div className="sound-grid">
-          <Slider label="Tremolo" value={s.tremoloRate} min={0} max={20} step={0.1} format={(v) => (v === 0 ? 'Off' : `${v.toFixed(1)} Hz`)} onChange={(v, k) => onSound({ tremoloRate: v }, k)} />
-          <Slider label="Trem depth" value={s.tremoloDepth} min={0} max={1} format={pct} onChange={(v, k) => onSound({ tremoloDepth: v }, k)} />
-          <Slider label="Phaser" value={s.phaserRate} min={0} max={10} step={0.1} format={(v) => (v === 0 ? 'Off' : `${v.toFixed(1)} Hz`)} onChange={(v, k) => onSound({ phaserRate: v }, k)} />
-          <Slider label="Phaser depth" value={s.phaserDepth} min={0} max={1} format={pct} onChange={(v, k) => onSound({ phaserDepth: v }, k)} />
+          <Knob reset={d.tremoloRate} label="Tremolo" value={s.tremoloRate} min={0} max={20} step={0.1} format={(v) => (v === 0 ? 'Off' : `${v.toFixed(1)} Hz`)} onChange={(v, k) => onSound({ tremoloRate: v }, k)} />
+          <Knob reset={d.tremoloDepth} label="Trem depth" value={s.tremoloDepth} min={0} max={1} format={pct} onChange={(v, k) => onSound({ tremoloDepth: v }, k)} />
+          <Knob reset={d.phaserRate} label="Phaser" value={s.phaserRate} min={0} max={10} step={0.1} format={(v) => (v === 0 ? 'Off' : `${v.toFixed(1)} Hz`)} onChange={(v, k) => onSound({ phaserRate: v }, k)} />
+          <Knob reset={d.phaserDepth} label="Phaser depth" value={s.phaserDepth} min={0} max={1} format={pct} onChange={(v, k) => onSound({ phaserDepth: v }, k)} />
         </div>
 
         <h4 className="sub-head">Sends</h4>
         <div className="sound-grid">
-          <Slider label="Delay send" value={s.delaySend} min={0} max={1} format={pct} onChange={(v, k) => onSound({ delaySend: v }, k)} />
-          <Slider label="Reverb send" value={s.reverbSend} min={0} max={1} format={pct} onChange={(v, k) => onSound({ reverbSend: v }, k)} />
+          <Knob reset={d.delaySend} label="Delay send" value={s.delaySend} min={0} max={1} format={pct} onChange={(v, k) => onSound({ delaySend: v }, k)} />
+          <Knob reset={d.reverbSend} label="Reverb send" value={s.reverbSend} min={0} max={1} format={pct} onChange={(v, k) => onSound({ reverbSend: v }, k)} />
         </div>
       </section>
     </div>
@@ -185,7 +188,7 @@ export const noteName = (midi: number) => `${NOTES[midi % 12]}${Math.floor(midi 
 /** A labelled select laid out like a slider row. */
 function Choice<T extends string>({ label, value, options, onChange, title }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void; title?: string }) {
   return (
-    <div className="slider" title={title}>
+    <div className="slider choice" title={title}>
       <label>{label}</label>
       <select value={value} aria-label={label} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => onChange(e.target.value as T)}>
         {options.map(([v, name]) => (

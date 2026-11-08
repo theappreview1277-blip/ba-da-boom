@@ -27,7 +27,7 @@ export async function run(t) {
   try {
     // 1. Tool panel.
     const tabs = await win.locator('.tools-tabs [role=tab]').allTextContents();
-    t.check('the tools are tabs under the grid', tabs.join('|') === 'Beat library|Beat intelligence|Generate|Pads', tabs.join('|'));
+    t.check('the tools are tabs under the grid', tabs.join('|') === 'Beat library|Beat intelligence|Generate|Pads|Mixer', tabs.join('|'));
     const scroll = await win.evaluate(() => {
       const c = document.querySelector('.center');
       return { page: document.documentElement.scrollHeight - innerHeight, centre: c.scrollHeight - c.clientHeight };

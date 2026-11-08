@@ -44,6 +44,88 @@ export function Slider({ label, value, min, max, step = 0.01, format, onChange, 
   );
 }
 
+/** A point on the knob's circle: angle in degrees, 0 = straight up, clockwise. */
+const polar = (r: number, deg: number) => {
+  const a = ((deg - 90) * Math.PI) / 180;
+  return `${(20 + r * Math.cos(a)).toFixed(2)} ${(20 + r * Math.sin(a)).toFixed(2)}`;
+};
+const arc = (r: number, from: number, to: number) =>
+  Math.abs(to - from) < 0.5 ? '' : `M ${polar(r, Math.min(from, to))} A ${r} ${r} 0 ${Math.abs(to - from) > 180 ? 1 : 0} 1 ${polar(r, Math.max(from, to))}`;
+
+/**
+ * A rotary knob for the sound panel. Drag up or right to turn it up (Shift for
+ * fine steps), use the arrow keys, or double-click to reset. It is a range input
+ * underneath, so it works with the keyboard and screen readers like a slider.
+ */
+export function Knob({ label, value, min, max, step = 0.01, format, onChange, disabled, title, reset }: SliderProps & { reset?: number }) {
+  const id = useId();
+  const key = useRef(`${label}:${gesture}`);
+  const drag = useRef<{ x: number; y: number; v: number } | null>(null);
+  const fresh = () => (key.current = `${label}:${++gesture}`);
+  const clamp = (v: number) => Math.min(max, Math.max(min, v));
+  const snap = (v: number) => {
+    const n = Math.round((clamp(v) - min) / step) * step + min;
+    return Number(clamp(n).toFixed(6));
+  };
+  const frac = max > min ? (value - min) / (max - min) : 0;
+  const angle = -135 + 270 * Math.min(1, Math.max(0, frac));
+  // Knobs that go both ways (pan, pitch) light up from the middle.
+  const zero = min < 0 && max > 0 ? -135 + (270 * -min) / (max - min) : -135;
+  return (
+    <div className={`slider knob ${disabled ? 'disabled' : ''}`} title={title}>
+      <label htmlFor={id}>{label}</label>
+      <div className="knob-dial">
+        <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+          <path d={arc(15, -135, 135)} className="knob-track" />
+          <path d={arc(15, zero, angle)} className="knob-value" />
+          <path d={`M ${polar(6, angle)} L ${polar(13, angle)}`} className="knob-pointer" />
+        </svg>
+        <input
+          id={id}
+          className="knob-input"
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled}
+          onPointerDown={(e) => {
+            if (e.button !== 0 || disabled) return;
+            e.preventDefault();
+            e.currentTarget.focus();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            fresh();
+            drag.current = { x: e.clientX, y: e.clientY, v: value };
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current;
+            if (!d) return;
+            // 200 px of movement turns the knob end to end; Shift makes it 5 times finer.
+            const moved = d.y - e.clientY + (e.clientX - d.x);
+            const next = snap(d.v + ((moved / 200) * (max - min)) / (e.shiftKey ? 5 : 1));
+            if (next !== value) onChange(next, key.current);
+          }}
+          onPointerUp={() => (drag.current = null)}
+          onPointerCancel={() => (drag.current = null)}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => e.preventDefault()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (!e.repeat) fresh();
+          }}
+          onChange={(e) => onChange(Number(e.target.value), key.current)}
+          onDoubleClick={() => {
+            if (reset === undefined || disabled) return;
+            fresh();
+            onChange(reset, key.current);
+          }}
+        />
+      </div>
+      <output htmlFor={id}>{format ? format(value) : value.toFixed(2)}</output>
+    </div>
+  );
+}
+
 export function Meter({ refFn, vertical = true, label }: { refFn: (el: HTMLDivElement | null) => void; vertical?: boolean; label: string }) {
   return (
     <div className={`meter ${vertical ? 'v' : 'h'}`} role="meter" aria-label={label}>

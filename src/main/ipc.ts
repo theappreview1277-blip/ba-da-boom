@@ -29,7 +29,7 @@ export const CHANNELS = {
   showLog: 'bdb:show-log',
 } as const;
 
-export const TOOL_TABS = ['library', 'beats', 'generate', 'pads'] as const;
+export const TOOL_TABS = ['library', 'beats', 'generate', 'pads', 'mixer'] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
 export const STEP_LANES = ['velocity', 'probability', 'micro'] as const;
 export type StepLane = (typeof STEP_LANES)[number];
