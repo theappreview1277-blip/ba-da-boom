@@ -1,8 +1,8 @@
 name: Release
 
-# Pushing a version tag (v0.1.1, say) builds the Windows installer and uploads it,
-# with the latest.yml the app's update check reads, to a DRAFT GitHub release.
-# Nobody gets the update until that draft is published on GitHub.
+# Pushing a version tag (v0.1.1, say) builds the Windows installer and publishes it,
+# with the latest.yml the app's update check reads, as a GitHub release. Installed
+# copies of the app then offer the update. Pushing the tag is the decision to release.
 on:
   push:
     tags: ['v*']
@@ -29,7 +29,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run kits
-      - name: Build the installer and upload it to a draft release
+      - name: Build the installer and publish it as a release
         run: npx electron-builder --win nsis --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

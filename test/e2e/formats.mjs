@@ -95,8 +95,11 @@ export async function run(t) {
     await stubDialogs(app, { savePath: join(work, 'Formats.badaboom') });
     await win.keyboard.press('Control+s');
     const samplesDir = join(work, 'Formats', 'samples');
-    for (let i = 0; i < 40 && !existsSync(samplesDir); i++) await win.waitForTimeout(250);
-    const collected = existsSync(samplesDir) ? readdirSync(samplesDir) : [];
+    // The folder is made before the sounds are copied into it, so wait for the files, not the folder.
+    const listing = () => (existsSync(samplesDir) ? readdirSync(samplesDir).filter((f) => !/\.tmp-/.test(f)) : []);
+    for (let i = 0; i < 40 && !listing().length; i++) await win.waitForTimeout(250);
+    await win.waitForTimeout(250);
+    const collected = listing();
     t.check('saving copies the sounds into the project as WAV', collected.length >= 1 && collected.every((f) => wavSeconds(join(samplesDir, f)) !== null), collected.join(', '));
     t.check('no page errors', pageErrors.length === 0, pageErrors.join(' | ') || 'none');
   } finally {
