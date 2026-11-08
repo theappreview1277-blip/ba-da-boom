@@ -45,6 +45,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Electron fetches its binary on first use; fetch it up front, retrying a
+      # failed download (GitHub release downloads sometimes time out).
+      - name: Download Electron
+        shell: bash
+        run: |
+          for i in 1 2 3 4; do node node_modules/electron/install.js && node -e "require('electron')" && exit 0; sleep $((i * 15)); done
+          exit 1
+      # The drum machine kits the installer includes (about 190 MB), kept between runs.
+      - uses: actions/cache@v4
+        with:
+          path: resources/kits
+          key: kits-${{ hashFiles('src/main/strudel-kits.json') }}
+      - run: npm run kits
       - run: npm run build
       - name: Run every test against the app
         run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node test/e2e/run-all.mjs
