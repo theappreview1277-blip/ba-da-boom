@@ -54,7 +54,7 @@ const browserApi: DesktopApi = {
     return `${name} stems`;
   },
   async appInfo() {
-    return { version: 'browser', electron: '-', chrome: navigator.userAgent, platform: 'browser', packaged: false, notices: '' };
+    return { version: 'browser', electron: '-', chrome: navigator.userAgent, platform: 'browser', packaged: false, logFile: '', notices: '' };
   },
   async showInFolder() {},
   async kitList() {
@@ -83,6 +83,14 @@ const browserApi: DesktopApi = {
   onBeforeClose() {},
   async closeReady() {},
   async closePending() {},
+  async launchFile() {
+    return null;
+  },
+  onOpenFile() {},
+  async log(level, message) {
+    ((window as any).__log ??= []).push(`${level}: ${message}`);
+  },
+  async showLog() {},
 };
 
 export const desktop: DesktopApi = window.bdb ?? browserApi;

@@ -24,6 +24,8 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
   high-pass with resonance, band-pass, vowel, drive, shape, bit crush, downsample, tremolo and phaser
 * Track and master meters, clip light, soft-clip safety stage
 * Save/open portable project folders, autosave and crash recovery, missing-sample handling
+* Double-click a `.badaboom` project in Explorer to open it (also while the app is open)
+* Error log in the app data folder (About → Show error log)
 * Offline WAV export (24-bit, 44.1 kHz) with effect tails, of a pattern or the whole song
 * Stem export (one 24-bit WAV per audible track, all the same length) and MIDI export
   (Standard MIDI File, General MIDI drum notes on channel 10)

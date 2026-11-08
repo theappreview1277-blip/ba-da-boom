@@ -23,6 +23,10 @@ export const CHANNELS = {
   beforeClose: 'bdb:before-close',
   closeReady: 'bdb:close-ready',
   closePending: 'bdb:close-pending',
+  launchFile: 'bdb:launch-file',
+  openFile: 'bdb:open-file',
+  log: 'bdb:log',
+  showLog: 'bdb:show-log',
 } as const;
 
 export interface OpenResult {
@@ -51,6 +55,8 @@ export interface AppInfo {
   chrome: string;
   platform: string;
   packaged: boolean;
+  /** Where the error log is written. */
+  logFile: string;
   notices: string;
 }
 
@@ -130,4 +136,12 @@ export interface DesktopApi {
   closeReady(): Promise<void>;
   /** The renderer is asking the user about unsaved changes; don't force-close. */
   closePending(): Promise<void>;
+  /** The project file Windows asked the app to open at start-up (once), or null. */
+  launchFile(): Promise<string | null>;
+  /** A project file double-clicked while the app is already open. */
+  onOpenFile(cb: (path: string) => void): void;
+  /** Write a line to the error log. */
+  log(level: 'info' | 'warn' | 'error', message: string): Promise<void>;
+  /** Show the error log file in Explorer. */
+  showLog(): Promise<void>;
 }

@@ -56,11 +56,11 @@ const AUTOSAVE_MS = 5000;
 const patternName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? String(Math.floor(i / 26) + 1) : '');
 
 type Modal =
-  | { kind: 'recover'; text: string; missing: string[] }
+  | { kind: 'recover'; text: string; missing: string[]; launch: string | null }
   | { kind: 'export' }
   | { kind: 'removePattern'; id: string }
-  | { kind: 'about'; notices: string; version: string; platform: string }
-  | { kind: 'unsaved'; then: 'close' | 'new' | 'open' }
+  | { kind: 'about'; notices: string; version: string; platform: string; logFile: string }
+  | { kind: 'unsaved'; then: 'close' | 'new' | 'open'; path?: string }
   | null;
 
 export function App() {
@@ -93,12 +93,32 @@ export function App() {
     window.clearTimeout((notify as any).t);
     (notify as any).t = window.setTimeout(() => setToast(null), 5000);
   }, []);
+  /** Shows a problem to the user and writes it to the error log. */
+  const fail = useCallback(
+    (msg: string) => {
+      notify(msg);
+      desktop.log('error', msg).catch(() => {});
+    },
+    [notify],
+  );
+
+  // Anything that goes wrong without being caught ends up in the error log too.
+  useEffect(() => {
+    const onError = (e: ErrorEvent) => desktop.log('error', `Uncaught: ${e.error?.stack ?? e.message} (${e.filename}:${e.lineno})`).catch(() => {});
+    const onRejection = (e: PromiseRejectionEvent) => desktop.log('error', `Unhandled promise: ${e.reason?.stack ?? e.reason}`).catch(() => {});
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
 
   // --- audio engine lifecycle ---
   useEffect(() => {
     const engine = new AudioEngine(sampleUrl);
     engine.onSampleStatus = () => setStatusTick((n) => n + 1);
-    engine.onError = (m) => notify(`Playback error: ${m}`);
+    engine.onError = (m) => fail(`Playback error: ${m}`);
     engineRef.current = engine;
     engine
       .init()
@@ -107,10 +127,13 @@ export function App() {
         setEngineReady(true);
         return engine.loadSamples(projectRef.current);
       })
-      .catch((e) => setEngineError(String(e)));
+      .catch((e) => {
+        setEngineError(String(e));
+        desktop.log('error', `Audio engine failed to start: ${e?.stack ?? e}`).catch(() => {});
+      });
     // For automated tests and diagnostics.
     Object.assign(window as any, { __engine: engine, __bdb: { renderPattern, encodeWav24, parseProject, serializeProject } });
-  }, [notify]);
+  }, [fail]);
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -290,7 +313,7 @@ export function App() {
           edit((p) => ({ ...p, samples: { ...p.samples, [id]: ref } }));
           lastId = id;
         } catch (e) {
-          notify(`Could not import ${f.name}: ${e instanceof Error ? e.message : e}`);
+          fail(`Could not import ${f.name}: ${e instanceof Error ? e.message : e}`);
         }
       }
       if (assignTo && lastId) {
@@ -299,7 +322,7 @@ export function App() {
       }
       if (lastId) notify(`Imported ${files.length === 1 ? files[0].name : `${files.length} files`}`);
     },
-    [edit, notify],
+    [edit, notify, fail],
   );
 
   // Strudel drum machine kits, downloaded when picked.
@@ -353,13 +376,13 @@ export function App() {
             (r.failed ? `. ${r.failed} file${r.failed === 1 ? '' : 's'} could not be loaded.` : ''),
         );
       } catch (e) {
-        notify(`Could not load ${kitLabel(name)}: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : e}`);
+        fail(`Could not load ${kitLabel(name)}: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : e}`);
       } finally {
         kitLoading.current = null;
         setKitProgress(null);
       }
     },
-    [edit, notify],
+    [edit, notify, fail],
   );
   const currentKit = useMemo(() => {
     const ids = project.tracks.map((t) => t.sound.sampleId ?? '');
@@ -402,7 +425,7 @@ export function App() {
     const base = file.split('/').pop()!;
     return { id: `user:${pool}`, name: base.replace(/\.wav$/i, ''), source: 'user', file: pool, originalName: base };
   }, []);
-  const folderError = useCallback((file: string, e: unknown) => notify(`Could not use ${file}: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : e}`), [notify]);
+  const folderError = useCallback((file: string, e: unknown) => fail(`Could not use ${file}: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : e}`), [fail]);
   const auditionFolderFile = useCallback(
     async (folder: string, file: string) => {
       try {
@@ -503,10 +526,10 @@ export function App() {
         dispatch({ type: 'load', project: p, path, saved });
         if (missing.length) notify(`${missing.length} sample file(s) could not be found. Tracks using them are marked "missing".`);
       } catch (e) {
-        notify(e instanceof Error ? e.message : String(e));
+        fail(e instanceof Error ? e.message : String(e));
       }
     },
-    [dispatch, notify],
+    [dispatch, notify, fail],
   );
 
   const save = useCallback(
@@ -527,16 +550,17 @@ export function App() {
         );
         return true;
       } catch (e) {
-        notify(`Save failed: ${e instanceof Error ? e.message : e}`);
+        fail(`Save failed: ${e instanceof Error ? e.message : e}`);
         return false;
       }
     },
-    [dispatch, notify],
+    [dispatch, notify, fail],
   );
 
-  const open = useCallback(async () => {
+  /** Open a project: the one Windows handed over (`path`), or one picked in the Open dialog. */
+  const open = useCallback(async (path?: string) => {
     try {
-      const res = await desktop.openProject();
+      const res = await desktop.openProject(path);
       if (res) {
         if (engineRef.current?.isPlaying) {
           await engineRef.current.stop();
@@ -545,9 +569,9 @@ export function App() {
         loadText(res.text, res.path, true, res.missing);
       }
     } catch (e) {
-      notify(`Open failed: ${e instanceof Error ? e.message : e}`);
+      fail(`Open failed: ${e instanceof Error ? e.message : e}`);
     }
-  }, [loadText, notify]);
+  }, [loadText, fail]);
 
   const newDoc = useCallback(async () => {
     if (engineRef.current?.isPlaying) {
@@ -559,19 +583,24 @@ export function App() {
   }, [dispatch]);
 
   const guarded = useCallback(
-    (then: 'new' | 'open') => {
-      if (stateRef.current.savedProject !== projectRef.current) setModal({ kind: 'unsaved', then });
+    (then: 'new' | 'open', path?: string) => {
+      if (stateRef.current.savedProject !== projectRef.current) setModal({ kind: 'unsaved', then, path });
       else if (then === 'new') newDoc();
-      else open();
+      else open(path);
     },
     [newDoc, open],
   );
+  const guardedRef = useRef(guarded);
+  guardedRef.current = guarded;
 
-  // --- autosave and recovery ---
+  // --- autosave and recovery, and project files opened from Windows ---
   useEffect(() => {
-    desktop.autosaveRecover().then((r) => {
-      if (r) setModal({ kind: 'recover', text: r.text, missing: r.missing });
+    Promise.all([desktop.autosaveRecover(), desktop.launchFile().catch(() => null)]).then(([r, launch]) => {
+      // Unsaved work from a crash comes first; the file opens if the user starts fresh.
+      if (r) setModal({ kind: 'recover', text: r.text, missing: r.missing, launch });
+      else if (launch) guardedRef.current('open', launch);
     });
+    desktop.onOpenFile((path) => guardedRef.current('open', path));
     desktop.onBeforeClose(async () => {
       await desktop.autosaveWrite(serializeProject(projectRef.current)).catch(() => {});
       if (stateRef.current.savedProject !== projectRef.current) {
@@ -651,12 +680,12 @@ export function App() {
         setModal(null);
       }
     } catch (e) {
-      notify(`Export failed: ${e instanceof Error ? e.message : e}`);
+      fail(`Export failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       setExporting(false);
       setExportProgress('');
     }
-  }, [defaultBars, exportBars, exportSong, exportFormat, notify]);
+  }, [defaultBars, exportBars, exportSong, exportFormat, notify, fail]);
 
   // --- keyboard shortcuts ---
   useEffect(() => {
@@ -786,7 +815,7 @@ export function App() {
         </button>
         <button className="about" onClick={async () => {
           const info = await desktop.appInfo();
-          setModal({ kind: 'about', notices: info.notices, version: info.version, platform: `${info.platform} · Electron ${info.electron}` });
+          setModal({ kind: 'about', notices: info.notices, version: info.version, platform: `${info.platform} · Electron ${info.electron}`, logFile: info.logFile });
         }}>About</button>
       </header>
 
@@ -1038,8 +1067,13 @@ export function App() {
         <Dialog title="Recover unsaved work?">
           <p>Ba-da-boom did not close normally last time. Your most recent autosave can be restored.</p>
           {modal.missing.length > 0 && <p className="warn">{modal.missing.length} imported sample(s) from that session could not be found.</p>}
+          {modal.launch && <p>Or open {modal.launch.split(/[\\/]/).pop()}, the project you double-clicked, and leave the unsaved work.</p>}
           <div className="actions">
-            <button onClick={() => setModal(null)}>Start fresh</button>
+            {modal.launch ? (
+              <button onClick={() => { const f = modal.launch!; setModal(null); open(f); }}>Open {modal.launch.split(/[\\/]/).pop()}</button>
+            ) : (
+              <button onClick={() => setModal(null)}>Start fresh</button>
+            )}
             <button className="primary" onClick={() => { loadText(modal.text, null, false, modal.missing); setModal(null); }}>Recover</button>
           </div>
         </Dialog>
@@ -1047,23 +1081,23 @@ export function App() {
 
       {modal?.kind === 'unsaved' && (
         <Dialog title="Save changes?">
-          <p>This project has unsaved changes.</p>
+          <p>This project has unsaved changes.{modal.then === 'open' && modal.path ? ` Save them before opening ${modal.path.split(/[\\/]/).pop()}?` : ''}</p>
           <div className="actions">
             <button onClick={() => setModal(null)}>Cancel</button>
             <button onClick={async () => {
-              const then = modal.then;
+              const { then, path } = modal;
               setModal(null);
               if (then === 'close') await desktop.closeReady();
               else if (then === 'new') newDoc();
-              else open();
+              else open(path);
             }}>Don't save</button>
             <button className="primary" onClick={async () => {
-              const then = modal.then;
+              const { then, path } = modal;
               if (!(await save(false))) return;
               setModal(null);
               if (then === 'close') await desktop.closeReady();
               else if (then === 'new') newDoc();
-              else open();
+              else open(path);
             }}>Save</button>
           </div>
         </Dialog>
@@ -1142,7 +1176,10 @@ export function App() {
           </p>
           <p>Factory sounds are synthesised by the project and released under CC0 1.0.</p>
           <pre className="notices">{modal.notices || 'Third-party notices are included with the installed app.'}</pre>
-          <div className="actions"><button className="primary" onClick={() => setModal(null)}>Close</button></div>
+          <div className="actions">
+            {inElectron && <button onClick={() => desktop.showLog()} title={modal.logFile}>Show error log</button>}
+            <button className="primary" onClick={() => setModal(null)}>Close</button>
+          </div>
         </Dialog>
       )}
     </div>

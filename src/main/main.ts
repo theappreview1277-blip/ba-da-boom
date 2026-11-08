@@ -10,6 +10,8 @@ import { pathToFileURL } from 'node:url';
 import { downloadKit, kitList } from './kits';
 import { cleanSettings, readSettings, resolveInFolder, scanFolder } from './library';
 import { CHANNELS, type OpenResult, type SaveRequest, type SaveResult, type Settings } from './ipc';
+import { projectFileFromArgs } from './launch';
+import { initLog, log, logFile, rateLimiter } from './log';
 
 const isDev = process.env.BDB_DEV === '1';
 const RENDERER_DIR = join(__dirname, '..', 'dist');
@@ -95,6 +97,23 @@ function registerProtocol() {
 
 let win: BrowserWindow | null = null;
 
+// Project files the app was asked to open by Windows (double-click, or a second launch).
+// Only these paths may be opened without the Open dialog; the renderer cannot name others.
+const allowedOpenPaths = new Set<string>();
+let launchFile: string | null = null;
+
+function acceptLaunchFile(argv: readonly string[], cwd: string): string | null {
+  const path = projectFileFromArgs(argv, cwd);
+  if (!path) return null;
+  if (!existsSync(path)) {
+    log('warn', 'main', `Asked to open ${path}, which does not exist`);
+    return null;
+  }
+  allowedOpenPaths.add(path);
+  log('info', 'main', `Opening ${path} from Windows`);
+  return path;
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1400,
@@ -117,6 +136,8 @@ function createWindow() {
   });
   win.removeMenu();
   win.once('ready-to-show', () => win?.show());
+  win.on('unresponsive', () => log('warn', 'window', 'The window stopped responding'));
+  win.on('responsive', () => log('info', 'window', 'The window is responding again'));
   win.loadURL(isDev ? 'http://localhost:5173' : 'bdb://app/index.html');
 
   // No navigation or new windows: external links open in the system browser.
@@ -197,7 +218,9 @@ function registerIpc() {
   });
 
   ipcMain.handle(CHANNELS.openProject, async (_e, givenPath?: unknown): Promise<OpenResult | null> => {
-    let path = typeof givenPath === 'string' ? givenPath : null;
+    // A path is only taken when Windows handed it to the app; otherwise the user picks one.
+    let path = typeof givenPath === 'string' && allowedOpenPaths.has(givenPath) ? givenPath : null;
+    if (typeof givenPath === 'string' && !path) throw new Error('That file was not opened through Windows.');
     if (!path) {
       const r = await dialog.showOpenDialog(win!, {
         title: 'Open project',
@@ -331,6 +354,7 @@ function registerIpc() {
       chrome: process.versions.chrome,
       platform: `${process.platform} ${process.arch}`,
       packaged: app.isPackaged,
+      logFile: logFile() ?? '',
       notices,
     };
   });
@@ -385,6 +409,25 @@ function registerIpc() {
     return { file: await addToPool(buf) };
   });
 
+  // The file Windows asked the app to open at start-up, handed over once.
+  ipcMain.handle(CHANNELS.launchFile, () => {
+    const f = launchFile;
+    launchFile = null;
+    return f;
+  });
+
+  const allowLog = rateLimiter(100);
+  ipcMain.handle(CHANNELS.log, (_e, level: unknown, message: unknown) => {
+    const lv = level === 'error' || level === 'warn' || level === 'info' ? level : 'error';
+    const r = allowLog();
+    if (r.dropped) log('warn', 'renderer', `${r.dropped} more message(s) were not logged (too many in one minute)`);
+    if (r.ok) log(lv, 'renderer', typeof message === 'string' ? message : String(message));
+  });
+  ipcMain.handle(CHANNELS.showLog, () => {
+    const f = logFile();
+    if (f && existsSync(f)) shell.showItemInFolder(f);
+  });
+
   ipcMain.handle(CHANNELS.showInFolder, (_e, p: unknown) => {
     if (typeof p === 'string' && existsSync(p)) shell.showItemInFolder(p);
   });
@@ -408,10 +451,26 @@ function extractUserSampleFiles(text: string): string[] {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  initLog(userDir());
+  log('info', 'main', `Ba-da-boom ${app.getVersion()} starting (Electron ${process.versions.electron}, ${process.platform} ${process.getSystemVersion?.() ?? ''} ${process.arch})`);
+  process.on('uncaughtException', (e) => {
+    log('error', 'main', e);
+    dialog.showErrorBox('Ba-da-boom', `Something went wrong: ${e.message}\n\nDetails were written to the log file:\n${logFile()}`);
+  });
+  process.on('unhandledRejection', (e) => log('error', 'main', e));
+  app.on('render-process-gone', (_e, _wc, d) => log('error', 'main', `Window process ended: ${d.reason} (exit code ${d.exitCode})`));
+  app.on('child-process-gone', (_e, d) => {
+    if (d.reason !== 'clean-exit') log('error', 'main', `${d.type} process ended: ${d.reason} (exit code ${d.exitCode})`);
+  });
+
+  launchFile = acceptLaunchFile(process.argv, process.cwd());
+
+  app.on('second-instance', (_e, argv, cwd) => {
     if (win) {
       if (win.isMinimized()) win.restore();
       win.focus();
+      const path = acceptLaunchFile(argv, cwd);
+      if (path) win.webContents.send(CHANNELS.openFile, path);
     }
   });
 
@@ -425,6 +484,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('window-all-closed', () => app.quit());
   app.on('will-quit', () => {
+    log('info', 'main', 'Closed normally');
     // Clean exit: remove the lock so the next start does not offer recovery.
     try {
       require('node:fs').rmSync(SESSION_LOCK(), { force: true });

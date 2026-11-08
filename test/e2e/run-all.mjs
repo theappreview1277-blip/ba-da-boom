@@ -41,6 +41,7 @@ const suites = [
   ['./electron.mjs', 'Desktop security and services'],
   ['./smoke.mjs', 'Playback, editing and export'],
   ['./electron-files.mjs', 'Projects, missing samples and recovery'],
+  ['./openfile.mjs', 'Opening files from Windows and the error log'],
   ['./generate.mjs', 'Pattern generators'],
   ['./rhythm.mjs', 'Beat intelligence'],
   ['./beatlib.mjs', 'Beat library'],
