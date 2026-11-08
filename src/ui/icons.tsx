@@ -12,6 +12,7 @@ const paths: Record<string, string> = {
   click: 'M9 3h6l3 18H6zM12 17l5-11',
   perform: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
   edit: 'M4 6h16M4 12h16M4 18h16M8 4v4M14 10v4M10 16v4',
+  settings: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1',
   info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5',
 };
 

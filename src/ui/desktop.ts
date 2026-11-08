@@ -2,7 +2,7 @@
 // In a plain browser (used for automated tests of the renderer) a small
 // in-memory stand-in is used so the UI and audio engine can be exercised.
 
-import type { DesktopApi, OpenResult } from '../main/ipc';
+import type { DesktopApi, OpenResult, Settings } from '../main/ipc';
 import type { SampleRef } from '../model/types';
 
 declare global {
@@ -12,6 +12,7 @@ declare global {
 }
 
 const blobUrls = new Map<string, string>();
+let browserSettings: Settings = { folders: [], favourites: [], layout: {}, sound: {} };
 const memoryFiles = new Map<string, string>();
 
 const browserApi: DesktopApi = {
@@ -65,10 +66,11 @@ const browserApi: DesktopApi = {
   },
   onKitProgress() {},
   async settingsGet() {
-    return { folders: [], favourites: [], layout: {} };
+    return browserSettings;
   },
-  async settingsSet() {
-    return { folders: [], favourites: [], layout: {} };
+  async settingsSet(patch) {
+    browserSettings = { ...browserSettings, ...patch, layout: { ...browserSettings.layout, ...patch.layout }, sound: { ...browserSettings.sound, ...patch.sound } };
+    return browserSettings;
   },
   async folderAdd() {
     return null;

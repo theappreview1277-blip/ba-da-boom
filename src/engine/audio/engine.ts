@@ -38,6 +38,9 @@ export interface QueuedSwitch {
   atCycle: number;
 }
 
+/** Seconds between a live hit and its sound: enough that it is never dropped as late. */
+const LIVE_HIT_DELAY = 0.03;
+
 export class AudioEngine {
   readonly ac: AudioContext;
   private scheduler!: CyclistLike;
@@ -338,14 +341,42 @@ export class AudioEngine {
   /** Play a synth track's sound once, now (no sample to wait for). */
   async auditionSynth(controls: Record<string, unknown>) {
     if (this.ac.state !== 'running') await this.ac.resume();
-    await superdough({ ...controls, orbit: METRONOME_ORBIT + 1 }, this.ac.currentTime + 0.01, 0.25);
+    await superdough({ ...controls, orbit: METRONOME_ORBIT + 1 }, this.ac.currentTime + LIVE_HIT_DELAY, 0.25);
+  }
+
+  /**
+   * A live hit on a track (a pad, a key or a MIDI note): played now through the
+   * track's own channel, so its effects apply and its meter moves.
+   */
+  async hit(controls: Record<string, unknown>, sampleId: string | null, velocity: number) {
+    if (!controls.s || (sampleId && this.status.get(sampleId) !== 'ok')) return;
+    if (this.ac.state !== 'running') await this.ac.resume();
+    // Superdough drops a sound whose start time has passed by the time its sample is ready (the
+    // audio clock moves in steps, and finding the sample is asynchronous), so allow it a moment.
+    await superdough({ ...controls, velocity }, this.ac.currentTime + LIVE_HIT_DELAY, sampleId ? 0.5 : 0.25);
+    // The track's first sound makes its channel: tap it now so the meter shows this hit.
+    if (typeof controls.orbit === 'number' && getAudioContext() === this.ac) this.analyserFor(controls.orbit);
+  }
+
+  /** Send the sound to a sound card, by its device id ('' is the system default). */
+  async setOutput(deviceId: string) {
+    const ac = this.ac as AudioContext & { setSinkId?: (id: string) => Promise<void>; sinkId?: string };
+    if (!ac.setSinkId) throw new Error('Choosing a sound card is not supported here.');
+    if ((ac.sinkId ?? '') === deviceId) return;
+    await ac.setSinkId(deviceId);
+  }
+
+  /** The sound card in use ('' is the system default). */
+  get outputId(): string {
+    const id = (this.ac as AudioContext & { sinkId?: unknown }).sinkId;
+    return typeof id === 'string' ? id : '';
   }
 
   /** Play a sample once, now, with optional track sound controls. */
   async audition(sampleId: string, controls: Record<string, unknown> = {}) {
     if (this.status.get(sampleId) !== 'ok') return;
     if (this.ac.state !== 'running') await this.ac.resume();
-    await superdough({ ...controls, s: soundKey(sampleId), orbit: METRONOME_ORBIT + 1 }, this.ac.currentTime + 0.01, 0.5);
+    await superdough({ ...controls, s: soundKey(sampleId), orbit: METRONOME_ORBIT + 1 }, this.ac.currentTime + LIVE_HIT_DELAY, 0.5);
   }
 
   /** Peak levels since the last call: master L/R (pre-limiter), clip latch, and per-track peaks. */
@@ -357,18 +388,10 @@ export class AudioEngine {
     const m = this.master.readPeaks();
     const now = this.ac.currentTime;
     if (m.l >= 1 || m.r >= 1) this.clipUntil = now + 2;
-    const controller = getSuperdoughAudioController();
     const tracks: number[] = [];
     for (let i = 0; i < trackCount; i++) {
       const orbit = i + 1;
-      let an = this.trackAnalysers.get(orbit);
-      const node = controller.nodes[orbit]?.output;
-      if (!an && node) {
-        an = this.ac.createAnalyser();
-        an.fftSize = 2048;
-        node.connect(an);
-        this.trackAnalysers.set(orbit, an);
-      }
+      const an = this.analyserFor(orbit);
       if (!an) {
         tracks.push(0);
         continue;
@@ -379,6 +402,19 @@ export class AudioEngine {
       tracks.push(p);
     }
     return { left: m.l, right: m.r, clip: now < this.clipUntil, limiting: m.reduction < -0.5, tracks };
+  }
+
+  /** The meter tap on a track's channel, made when the channel first exists. */
+  private analyserFor(orbit: number): AnalyserNode | undefined {
+    let an = this.trackAnalysers.get(orbit);
+    const node = getSuperdoughAudioController().nodes[orbit]?.output;
+    if (!an && node) {
+      an = this.ac.createAnalyser();
+      an.fftSize = 2048;
+      node.connect(an);
+      this.trackAnalysers.set(orbit, an);
+    }
+    return an;
   }
 
   resetClip() {

@@ -84,7 +84,7 @@ export async function run(t) {
 
     // --- Kits ---
     const options = await win.$$eval('select[aria-label=Kit] option', (o) => o.map((x) => x.value));
-    t.check('the Kit menu has Factory plus all 71 Strudel drum machines', options[0] === 'factory' && options.length === 72 && options.includes('RolandTR909') && options.includes('LinnDrum'), options.length);
+    t.check('the Kit menu has Factory, the Acoustic Kit and all 71 Strudel drum machines', options[0] === 'factory' && options[1] === 'AcousticKit' && options.length === 73 && options.includes('RolandTR909') && options.includes('LinnDrum'), options.length);
     t.check('it starts on Factory', (await win.inputValue('select[aria-label=Kit]')) === 'factory');
 
     await win.selectOption('select[aria-label=Kit]', 'RolandTR909');
@@ -133,6 +133,20 @@ export async function run(t) {
     t.check('Factory puts the factory sounds on every track', p.tracks.every((tr, i) => tr.sound.sampleId.startsWith('factory:')) && p.tracks[0].sound.sampleId === 'factory:kick');
     await win.keyboard.press('Control+z');
 
+    // The Acoustic Kit ships with the app: no download, even with the kit server unreachable.
+    const requests = hits.length;
+    const clapBefore = (await project()).tracks[3].sound.sampleId;
+    await win.evaluate(() => (window.__lastKit = null));
+    await win.selectOption('select[aria-label=Kit]', 'AcousticKit');
+    await win.waitForFunction(() => window.__lastKit?.kit === 'AcousticKit', null, { timeout: 30000 }).catch(() => {});
+    const ak = await win.evaluate(() => window.__lastKit);
+    p = await project();
+    t.check('the Acoustic Kit loads from the app itself (no downloads)', ak?.samples.length === 19 && ak.failed === 0 && ak.downloaded === 0 && hits.length === requests, ak && `${ak.samples.length} ok, ${ak.failed} failed, ${hits.length - requests} requests`);
+    t.check('it goes on 15 tracks with recorded drums; Clap keeps its sound', ak?.assigned === 15 && p.samples[p.tracks[0].sound.sampleId]?.name === 'Acoustic Kit Kick 1' && p.tracks[3].sound.sampleId === clapBefore && ak.kept.join() === 'Clap', `${ak?.assigned} tracks, kept ${ak?.kept}, clap ${p.tracks[3].sound.sampleId}`);
+    await win.waitForFunction(() => window.__engine['project'].tracks.every((t) => window.__engine.sampleStatus(t.sound.sampleId) === 'ok'), null, { timeout: 15000 }).catch(() => {});
+    t.check('every Acoustic Kit sound loads in the audio engine', await win.evaluate(() => window.__engine['project'].tracks.every((t) => window.__engine.sampleStatus(t.sound.sampleId) === 'ok')));
+    await win.keyboard.press('Control+z');
+
     // A kit whose server is down: nothing changes, and the message says so.
     await win.evaluate(() => (window.__lastKit = null));
     const snapshot = JSON.stringify((await project()).tracks);
@@ -176,6 +190,11 @@ export async function run(t) {
       return head.toString('latin1', 0, 4) !== 'RIFF' || head.toString('latin1', 8, 12) !== 'WAVE';
     });
     t.check(`all ${paths.length} kit files are included with the app`, bad.length === 0, bad.length ? `${bad.length} missing, e.g. ${bad[0]}` : dir);
+    const acoustic = JSON.parse(readFileSync('src/main/acoustic-kit.json', 'utf8'));
+    const adir = process.env.ELECTRON_EXE ? join(dirname(process.env.ELECTRON_EXE), 'resources', 'acoustic') : join('resources', 'acoustic');
+    const apaths = Object.values(acoustic.kits).flatMap((k) => Object.values(k).flat());
+    const amissing = apaths.filter((p) => !existsSync(join(adir, ...p.split('/'))));
+    t.check(`all ${apaths.length} Acoustic Kit files are included with the app`, apaths.length === 19 && amissing.length === 0, amissing.length ? `missing ${amissing[0]}` : adir);
 
     const { app, win, pageErrors } = await launchApp(undefined, [], { BDB_KITS_SOURCE: 'bundled' });
     try {

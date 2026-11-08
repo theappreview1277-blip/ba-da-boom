@@ -12,6 +12,7 @@ import { cleanSettings, readSettings, resolveInFolder, scanFolder } from './libr
 import { CHANNELS, type OpenResult, type SaveRequest, type SaveResult, type Settings } from './ipc';
 import { projectFileFromArgs } from './launch';
 import { initLog, log, logFile, rateLimiter } from './log';
+import { COMPRESSED_FILE } from '../model/audioFiles';
 
 const isDev = process.env.BDB_DEV === '1';
 const RENDERER_DIR = join(__dirname, '..', 'dist');
@@ -387,6 +388,7 @@ function registerIpc() {
       ...s,
       ...(Array.isArray(patch?.favourites) ? { favourites: patch.favourites } : {}),
       ...(patch?.layout && typeof patch.layout === 'object' ? { layout: { ...s.layout, ...patch.layout } } : {}),
+      ...(patch?.sound && typeof patch.sound === 'object' ? { sound: { ...s.sound, ...patch.sound } } : {}),
     })),
   );
   ipcMain.handle(CHANNELS.folderAdd, async () => {
@@ -405,6 +407,7 @@ function registerIpc() {
     if (!stat?.isFile()) throw new Error('The file is no longer there.');
     if (stat.size > MAX_SAMPLE_BYTES) throw new Error('Sample is larger than 200 MB.');
     const buf = await fs.readFile(full);
+    if (COMPRESSED_FILE.test(full)) return { bytes: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) };
     if (!isWav(buf)) throw new Error(`${basename(full)} is not a WAV file.`);
     return { file: await addToPool(buf) };
   });
@@ -475,8 +478,10 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    // Nothing in this app needs camera, microphone, notifications etc.
-    session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+    // MIDI input (for drum pads and keyboards) is the only permission the app uses: no camera,
+    // microphone, notifications etc. Chromium asks for any MIDI access as "midiSysex"; the app only
+    // reads note messages from inputs and never sends anything to a MIDI device.
+    session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'midi' || perm === 'midiSysex'));
     registerProtocol();
     registerIpc();
     createWindow();

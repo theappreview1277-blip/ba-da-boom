@@ -32,7 +32,7 @@ import {
 import { applySteps, randomiseLane } from '../model/generate';
 import { FACTORY_SAMPLES } from '../model/factory';
 import { kitAssignments, kitLabel, kitSampleName } from '../model/kits';
-import type { FolderListing, KitProgress, KitSample, Settings, StepLane as LaneKind, ToolTab } from '../main/ipc';
+import type { FolderListing, KitProgress, KitSample, Settings, SoundSettings as SoundPrefs, StepLane as LaneKind, ToolTab } from '../main/ipc';
 import { parseProject, serializeProject } from '../model/serialize';
 import { STEPS_PER_BAR, type Project, type SampleRef } from '../model/types';
 import { NumberField, Slider, db } from './controls';
@@ -52,6 +52,12 @@ import { Perform } from './Perform';
 import { SongBar } from './SongBar';
 import { reorderProps } from './reorder';
 import { useUiStore } from './store';
+import { SAMPLE_FILE, sampleName } from '../model/audioFiles';
+import { toWav } from '../engine/audio/convert';
+import { Pads } from './Pads';
+import { SoundSettings } from './SoundSettings';
+import { findOutput, listOutputs, Midi, type MidiState, type OutputDevice } from './devices';
+import { hitStep, noteToTrack, PAD_KEYS } from '../model/live';
 
 const AUTOSAVE_MS = 5000;
 
@@ -59,6 +65,7 @@ const TOOLS: { id: ToolTab; label: string; title: string }[] = [
   { id: 'library', label: 'Beat library', title: 'Named classic beats and their variants' },
   { id: 'beats', label: 'Beat intelligence', title: 'Style generator, complete my beat, fills and humanise' },
   { id: 'generate', label: 'Generate', title: 'Euclidean rhythms, randomise and variations' },
+  { id: 'pads', label: 'Pads', title: 'Drum pads to play and record live, with the mouse, the keyboard or a MIDI controller' },
 ];
 
 const patternName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? String(Math.floor(i / 26) + 1) : '');
@@ -66,6 +73,7 @@ const patternName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26
 type Modal =
   | { kind: 'recover'; text: string; missing: string[]; launch: string | null }
   | { kind: 'export' }
+  | { kind: 'settings' }
   | { kind: 'removePattern'; id: string }
   | { kind: 'about'; notices: string; version: string; platform: string; logFile: string }
   | { kind: 'unsaved'; then: 'close' | 'new' | 'open'; path?: string }
@@ -341,15 +349,15 @@ export function App() {
     async (files: File[], assignTo?: string) => {
       let lastId: string | null = null;
       for (const f of files) {
-        if (!/\.wav$/i.test(f.name)) {
-          notify(`${f.name}: only WAV files are supported in this version.`);
+        if (!SAMPLE_FILE.test(f.name)) {
+          notify(`${f.name}: use WAV, MP3, FLAC or OGG sound files.`);
           continue;
         }
         try {
-          const bytes = new Uint8Array(await f.arrayBuffer());
+          const bytes = await toWav(f.name, new Uint8Array(await f.arrayBuffer()));
           const { file } = await desktop.importSample(f.name, bytes);
           const id = `user:${file}`;
-          const ref: SampleRef = { id, name: f.name.replace(/\.wav$/i, ''), source: 'user', file, originalName: f.name };
+          const ref: SampleRef = { id, name: sampleName(f.name), source: 'user', file, originalName: f.name };
           edit((p) => ({ ...p, samples: { ...p.samples, [id]: ref } }));
           lastId = id;
         } catch (e) {
@@ -449,21 +457,26 @@ export function App() {
   const [folders, setFolders] = useState<FolderListing[]>([]);
   const [favourites, setFavourites] = useState<Set<string>>(new Set());
   const [layout, setLayout] = useState<Settings['layout']>({});
+  const [sound, setSound] = useState<SoundPrefs>({});
+  const [soundLoaded, setSoundLoaded] = useState(false);
   const [winWidth, setWinWidth] = useState(window.innerWidth);
   useEffect(() => {
     desktop.settingsGet().then((s) => {
       setFavourites(new Set(s.favourites));
       setLayout(s.layout);
-    }, () => {});
+      setSound(s.sound ?? {});
+      setSoundLoaded(true);
+    }, () => setSoundLoaded(true));
     desktop.folderList().then(setFolders, () => {});
     const onResize = () => setWinWidth(window.innerWidth);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
   const folderSample = useCallback(async (folder: string, file: string): Promise<SampleRef> => {
-    const { file: pool } = await desktop.folderRead(folder, file);
     const base = file.split('/').pop()!;
-    return { id: `user:${pool}`, name: base.replace(/\.wav$/i, ''), source: 'user', file: pool, originalName: base };
+    const got = await desktop.folderRead(folder, file);
+    const pool = 'file' in got ? got.file : (await desktop.importSample(base, await toWav(base, got.bytes))).file;
+    return { id: `user:${pool}`, name: sampleName(base), source: 'user', file: pool, originalName: base };
   }, []);
   const folderError = useCallback((file: string, e: unknown) => fail(`Could not use ${file}: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : e}`), [fail]);
   const auditionFolderFile = useCallback(
@@ -494,7 +507,7 @@ export function App() {
     const l = await desktop.folderAdd().catch(() => null);
     if (!l) return;
     setFolders((fs) => [...fs.filter((f) => f.path !== l.path), l]);
-    notify(`Added ${l.path}: ${l.files.length}${l.truncated ? '+' : ''} WAV file${l.files.length === 1 ? '' : 's'}`);
+    notify(`Added ${l.path}: ${l.files.length}${l.truncated ? '+' : ''} sound file${l.files.length === 1 ? '' : 's'}`);
   }, [notify]);
   const removeFolder = useCallback(
     async (path: string) => {
@@ -535,6 +548,130 @@ export function App() {
   // Short windows start with the tools folded away, so all 16 tracks fit.
   const toolsOpen = layout.toolsOpen ?? window.innerHeight >= 860;
   const laneKind: LaneKind = layout.lane ?? 'velocity';
+
+  // --- sound card, MIDI and drum pads ---
+  const soundRef = useRef(sound);
+  soundRef.current = sound;
+  const saveSound = useCallback((patch: Partial<SoundPrefs>) => {
+    setSound((prev) => {
+      const next = { ...prev, ...patch };
+      if (next.output && !next.output.id) delete next.output;
+      return next;
+    });
+    desktop.settingsSet({ sound: patch }).catch(() => {});
+  }, []);
+  const [outputs, setOutputs] = useState<OutputDevice[]>([]);
+  const [activeOutput, setActiveOutput] = useState<OutputDevice | null>(null);
+  /** Play through the saved sound card when it is connected, otherwise the system default. */
+  const applyOutput = useCallback(async (announce: boolean) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    const list = await listOutputs();
+    setOutputs(list);
+    const saved = soundRef.current.output;
+    const found = findOutput(list, saved);
+    try {
+      await engine.setOutput(found?.id ?? '');
+      setActiveOutput(found);
+      if (saved && !found && announce) notify(`${saved.label} is not connected, so sound plays through the system default.`);
+    } catch (e) {
+      setActiveOutput(null);
+      if (saved) fail(`Could not play through ${saved.label}: ${e instanceof Error ? e.message : e}`);
+    }
+  }, [notify, fail]);
+  useEffect(() => {
+    if (!engineReady || !soundLoaded) return;
+    void applyOutput(true);
+    const md = navigator.mediaDevices;
+    if (!md?.addEventListener) return;
+    // A sound card plugged in or out: use the saved one again as soon as it is back.
+    const onChange = () => void applyOutput(false);
+    md.addEventListener('devicechange', onChange);
+    return () => md.removeEventListener('devicechange', onChange);
+  }, [engineReady, soundLoaded, applyOutput]);
+  const chooseOutput = useCallback(
+    (d: OutputDevice | null) => {
+      soundRef.current = { ...soundRef.current, output: d ? { id: d.id, label: d.label } : undefined };
+      // undefined is dropped on the way to the settings file, so the default is sent as an empty id.
+      saveSound({ output: d ? { id: d.id, label: d.label } : { id: '', label: '' } });
+      void applyOutput(false).then(() => notify(d ? `Playing through ${d.label}` : 'Playing through the system default'));
+    },
+    [saveSound, applyOutput, notify],
+  );
+
+  const [recording, setRecording] = useState(false);
+  const recordingRef = useRef(false);
+  recordingRef.current = recording;
+  const takes = useRef(0);
+  const padEls = useRef(new Map<number, HTMLButtonElement>());
+  const padRef = useCallback((i: number) => (el: HTMLButtonElement | null) => {
+    if (el) padEls.current.set(i, el);
+    else padEls.current.delete(i);
+  }, []);
+  /** A live hit on track `index`: play it, light its pad and, while recording, write it into the pattern. */
+  const hit = useCallback(
+    (index: number, velocity: number) => {
+      const p = projectRef.current;
+      const t = p.tracks[index];
+      const engine = engineRef.current;
+      if (!t || !engine) return;
+      engine.hit(trackControls(t, index, p), t.sound.source === 'synth' ? null : t.sound.sampleId ?? null, velocity).catch(() => {});
+      const pad = padEls.current.get(index);
+      if (pad) {
+        pad.classList.remove('hit');
+        void pad.offsetWidth;
+        pad.classList.add('hit');
+      }
+      if (!recordingRef.current || !engine.isPlaying) return;
+      const cycle = engine.patternCycle();
+      const patternId = engine.audiblePatternId;
+      if (cycle == null || !patternId) return;
+      const len = currentLane(p, patternId, t.id).length;
+      const { step, micro } = hitStep(cycle, len, soundRef.current.quantise ?? true);
+      edit((q) => setStep(q, patternId, t.id, step, { on: true, velocity: Math.round(velocity * 100) / 100, micro }), `rec:${takes.current}`);
+    },
+    [edit],
+  );
+  const hitRef = useRef(hit);
+  hitRef.current = hit;
+  const toggleRecordRef = useRef<() => Promise<void>>(async () => {});
+  const toggleRecord = useCallback(async () => {
+    if (recordingRef.current) {
+      setRecording(false);
+      return;
+    }
+    // Each time recording starts is one take, and one undo step.
+    takes.current++;
+    setRecording(true);
+    const engine = engineRef.current;
+    if (engine && !engine.isPlaying) {
+      await engine.play();
+      setPlaying(engine.isPlaying);
+    }
+  }, []);
+  toggleRecordRef.current = toggleRecord;
+  useEffect(() => {
+    if (!playing) setRecording(false);
+  }, [playing]);
+
+  const midiRef = useRef<Midi | null>(null);
+  const [midiState, setMidiState] = useState<MidiState>({ status: 'off', inputs: [] });
+  const [lastNote, setLastNote] = useState<{ note: number; input: string; track: string | null } | null>(null);
+  useEffect(() => {
+    const midi = new Midi();
+    midiRef.current = midi;
+    midi.onState = setMidiState;
+    midi.onNote = (note, velocity, input) => {
+      const p = projectRef.current;
+      const i = noteToTrack(note, soundRef.current.midiMap ?? 'gm', p.tracks.length);
+      setLastNote({ note, input, track: i == null ? null : p.tracks[i].name });
+      if (i != null) hitRef.current(i, velocity);
+    };
+    void midi.start();
+  }, []);
+  useEffect(() => {
+    if (midiRef.current) midiRef.current.only = sound.midiInput ?? null;
+  }, [sound.midiInput]);
   const onDropFiles = useCallback((id: string, files: File[]) => importFiles(files, id), [importFiles]);
 
   const audition = useCallback(
@@ -742,6 +879,18 @@ export function App() {
       const st = stateRef.current;
       const p = projectRef.current;
       const k = e.key.toLowerCase();
+      const pad = soundRef.current.padKeys && !ctrl && !e.altKey ? PAD_KEYS.indexOf(k) : -1;
+      if (pad >= 0) {
+        // While "Keys play pads" is on, these letters play the pads instead of their shortcuts.
+        e.preventDefault();
+        if (!e.repeat && pad < p.tracks.length) hitRef.current(pad, 0.8);
+        return;
+      }
+      if (!ctrl && !e.altKey && k === 'r') {
+        e.preventDefault();
+        if (!e.repeat) void toggleRecordRef.current();
+        return;
+      }
       if (e.key === ' ') {
         e.preventDefault();
         togglePlay();
@@ -823,11 +972,11 @@ export function App() {
       return items.every((c) => c.getBoundingClientRect().top < top);
     };
     const apply = (level: number) => {
-      el.classList.remove('c1', 'c2', 'c3');
+      el.classList.remove('c1', 'c2', 'c3', 'c4', 'c5');
       for (let i = 1; i <= level; i++) el.classList.add(`c${i}`);
     };
     let level = 0;
-    for (; level < 3; level++) {
+    for (; level < 5; level++) {
       apply(level);
       if (oneLine()) break;
     }
@@ -867,7 +1016,7 @@ export function App() {
         <div className="group transport" role="toolbar" aria-label="Transport">
           <button className={`play ${playing ? 'on' : ''}`} onClick={togglePlay} disabled={!engineReady} title="Play / stop (Space)">
             <Icon name={playing ? 'stop' : 'play'} size={18} />
-            {playing ? 'Stop' : 'Play'}
+            <span className="lbl">{playing ? 'Stop' : 'Play'}</span>
           </button>
           <NumberField label="BPM" value={project.bpm} min={20} max={300} decimals={1} onCommit={(v) => edit((p) => ({ ...p, bpm: v }))} title="Type a tempo (20–300) and press Enter. Arrow keys: ±1, Shift: ±10" />
           <Slider label="Swing" value={project.swing} min={50} max={75} step={0.5} format={(v) => `${v.toFixed(1)}%`} onChange={(v, k) => edit((p) => ({ ...p, swing: v }), k)} />
@@ -890,6 +1039,9 @@ export function App() {
         <button className={`view-toggle ${view === 'perform' ? 'on' : ''}`} aria-pressed={view === 'perform'} onClick={() => setView(view === 'perform' ? 'edit' : 'perform')} title="Performance view: big pattern pads and track mutes (P)">
           <Icon name={view === 'perform' ? 'edit' : 'perform'} />
           <span className="lbl">{view === 'perform' ? 'Edit view' : 'Perform'}</span>
+        </button>
+        <button className="settings-btn" onClick={() => setModal({ kind: 'settings' })} aria-label="Settings" title="Sound card, MIDI controller and playing settings">
+          <Icon name="settings" />
         </button>
         <button className="about" onClick={async () => {
           const info = await desktop.appInfo();
@@ -1146,6 +1298,22 @@ export function App() {
                     }}
                   />
                   )}</div>
+                  <div className="tool-page" hidden={tool !== 'pads'}>
+                    <Pads
+                      tracks={project.tracks}
+                      recording={recording}
+                      quantise={sound.quantise ?? true}
+                      padKeys={sound.padKeys ?? false}
+                      midiMap={sound.midiMap ?? 'gm'}
+                      midi={midiState}
+                      padRef={padRef}
+                      onHit={hit}
+                      onRecord={() => void toggleRecord()}
+                      onQuantise={(on) => saveSound({ quantise: on })}
+                      onPadKeys={(on) => saveSound({ padKeys: on })}
+                      onSettings={() => setModal({ kind: 'settings' })}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1294,6 +1462,24 @@ export function App() {
         </Dialog>
       )}
 
+      {modal?.kind === 'settings' && (
+        <Dialog title="Settings" wide>
+          <SoundSettings
+            sound={sound}
+            outputs={outputs}
+            activeOutput={activeOutput}
+            midi={midiState}
+            lastNote={lastNote}
+            onChange={saveSound}
+            onOutput={chooseOutput}
+            onTest={() => auditionTrack(state.selectedTrack)}
+          />
+          <div className="actions">
+            <button className="primary" onClick={() => setModal(null)}>Close</button>
+          </div>
+        </Dialog>
+      )}
+
       {modal?.kind === 'about' && (
         <Dialog title="About Ba-da-boom" wide>
           <p>Version {modal.version} · {modal.platform}</p>
@@ -1302,7 +1488,7 @@ export function App() {
             engine are <strong>Strudel</strong> (strudel.cc), © Strudel contributors, also AGPL-3.0-or-later. You can get the
             complete source code of this version at https://github.com/theappreview1277-blip/ba-da-boom.
           </p>
-          <p>Factory sounds are synthesised by the project and released under CC0 1.0.</p>
+          <p>Factory sounds are synthesised by the project and released under CC0 1.0. The Acoustic Kit is from Virtuosity Drums (Austin McMahon, Virtuosity Musical Instruments, with percussion from VSCO 2), also CC0 1.0.</p>
           <pre className="notices">{modal.notices || 'Third-party notices are included with the installed app.'}</pre>
           <div className="actions">
             {inElectron && <button onClick={() => desktop.showLog()} title={modal.logFile}>Show error log</button>}

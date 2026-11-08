@@ -63,6 +63,10 @@
       {
         "from": "resources/kits",
         "to": "kits"
+      },
+      {
+        "from": "resources/acoustic",
+        "to": "acoustic"
       }
     ],
     "win": {

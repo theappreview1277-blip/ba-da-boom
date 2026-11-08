@@ -1,0 +1,55 @@
+{
+  "source": "https://github.com/sfzinstruments/virtuosity_drums/tree/9f04cf9a734527edfbb0a4eee1f674e45bbf71bc",
+  "licence": "CC0-1.0",
+  "kits": {
+    "AcousticKit": {
+      "bd": [
+        "AcousticKit/bd-1.wav",
+        "AcousticKit/bd-2.wav"
+      ],
+      "sd": [
+        "AcousticKit/sd-1.wav",
+        "AcousticKit/sd-2.wav"
+      ],
+      "rim": [
+        "AcousticKit/rim-1.wav"
+      ],
+      "hh": [
+        "AcousticKit/hh-1.wav",
+        "AcousticKit/hh-2.wav"
+      ],
+      "oh": [
+        "AcousticKit/oh-1.wav"
+      ],
+      "lt": [
+        "AcousticKit/lt-1.wav"
+      ],
+      "mt": [
+        "AcousticKit/mt-1.wav"
+      ],
+      "ht": [
+        "AcousticKit/ht-1.wav"
+      ],
+      "cb": [
+        "AcousticKit/cb-1.wav"
+      ],
+      "perc": [
+        "AcousticKit/perc-1.wav",
+        "AcousticKit/perc-2.wav"
+      ],
+      "sh": [
+        "AcousticKit/sh-1.wav"
+      ],
+      "tb": [
+        "AcousticKit/tb-1.wav"
+      ],
+      "cr": [
+        "AcousticKit/cr-1.wav"
+      ],
+      "rd": [
+        "AcousticKit/rd-1.wav",
+        "AcousticKit/rd-2.wav"
+      ]
+    }
+  }
+}
