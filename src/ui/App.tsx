@@ -1040,7 +1040,7 @@ export function App() {
           <Icon name={view === 'perform' ? 'edit' : 'perform'} />
           <span className="lbl">{view === 'perform' ? 'Edit view' : 'Perform'}</span>
         </button>
-        <button className="about settings-btn" onClick={() => setModal({ kind: 'settings' })} aria-label="Settings" title="Sound card, MIDI controller and playing settings">
+        <button className="settings-btn" onClick={() => setModal({ kind: 'settings' })} aria-label="Settings" title="Sound card, MIDI controller and playing settings">
           <Icon name="settings" />
         </button>
         <button className="about" onClick={async () => {

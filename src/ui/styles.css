@@ -118,6 +118,7 @@ button.tb,
 .transport .play,
 .view-toggle,
 .about,
+.settings-btn,
 .transport .toggle {
   display: inline-flex;
   align-items: center;
@@ -173,6 +174,9 @@ button.tb {
   width: 68px;
 }
 .about {
+  margin-left: auto;
+}
+.settings-btn {
   margin-left: auto;
 }
 .settings-btn + .about {
