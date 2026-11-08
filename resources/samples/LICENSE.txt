@@ -1,0 +1,13 @@
+Ba-da-boom factory kit
+
+All sounds in this folder were synthesised from scratch by
+scripts/make-factory-samples.mjs in the Ba-da-boom source. They contain no
+third-party recordings.
+
+To the extent possible under law, the Ba-da-boom contributors have waived all
+copyright and related or neighboring rights to these sound files under
+Creative Commons CC0 1.0 Universal:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The generator script itself is part of Ba-da-boom and is licensed under the
+GNU Affero General Public License v3.0 or later, like the rest of the source.
