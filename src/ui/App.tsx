@@ -1488,7 +1488,7 @@ export function App() {
             engine are <strong>Strudel</strong> (strudel.cc), © Strudel contributors, also AGPL-3.0-or-later. You can get the
             complete source code of this version at https://github.com/theappreview1277-blip/ba-da-boom.
           </p>
-          <p>Factory sounds are synthesised by the project and released under CC0 1.0.</p>
+          <p>Factory sounds are synthesised by the project and released under CC0 1.0. The Acoustic Kit is from Virtuosity Drums (Austin McMahon, Virtuosity Musical Instruments, with percussion from VSCO 2), also CC0 1.0.</p>
           <pre className="notices">{modal.notices || 'Third-party notices are included with the installed app.'}</pre>
           <div className="actions">
             {inElectron && <button onClick={() => desktop.showLog()} title={modal.logFile}>Show error log</button>}

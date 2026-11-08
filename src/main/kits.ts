@@ -10,8 +10,11 @@ import { join } from 'node:path';
 import type { KitProgress, KitResult, KitSample } from './ipc';
 import { validKitPath as validPath } from '../model/kits';
 import catalogue from './strudel-kits.json';
+import acoustic from './acoustic-kit.json';
 
-const KITS = catalogue.kits as Record<string, Record<string, string[]>>;
+/** Kits recorded from real drums, shipped with the app (resources/acoustic), never downloaded. */
+const LOCAL = acoustic.kits as Record<string, Record<string, string[]>>;
+const KITS = { ...LOCAL, ...(catalogue.kits as Record<string, Record<string, string[]>>) };
 const MAX_KIT_FILE_BYTES = 20 * 1024 * 1024;
 const PARALLEL = 6;
 
@@ -19,7 +22,8 @@ const PARALLEL = 6;
  * Where kit files come from. Normally the bundled folder, then the network.
  * Tests set BDB_KITS_SOURCE to "bundled" (no network) or to a URL (network only).
  */
-function sources(): { dir: string | null; base: string | null } {
+function sources(kit: string): { dir: string | null; base: string | null } {
+  if (Object.hasOwn(LOCAL, kit)) return { dir: app.isPackaged ? join(process.resourcesPath, 'acoustic') : join(app.getAppPath(), 'resources', 'acoustic'), base: null };
   const env = process.env.BDB_KITS_SOURCE;
   const dir = app.isPackaged ? join(process.resourcesPath, 'kits') : join(app.getAppPath(), 'resources', 'kits');
   if (env === 'bundled') return { dir, base: null };
@@ -68,7 +72,7 @@ export async function downloadKit(name: unknown, deps: Deps): Promise<KitResult>
   let fetched = 0;
   let stored = 0;
   let done = 0;
-  const src = sources();
+  const src = sources(name);
   const base = src.base?.replace(/\/?$/, '/') ?? null;
   const read = async (path: string): Promise<Buffer> => {
     if (src.dir) {

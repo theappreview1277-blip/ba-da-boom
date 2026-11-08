@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Project, SampleRef } from '../model/types';
 import type { SampleStatus } from '../engine/audio/engine';
 import type { FolderListing, KitProgress } from '../main/ipc';
-import { kitLabel } from '../model/kits';
+import { isAcoustic, kitLabel } from '../model/kits';
 import { SAMPLE_ACCEPT, sampleName } from '../model/audioFiles';
 
 interface Props {
@@ -126,13 +126,24 @@ export function SampleBrowser(props: Props) {
           aria-label="Kit"
           onKeyDown={(e) => e.stopPropagation()}
           onChange={(e) => e.target.value && onKit(e.target.value)}
-          title="Put a whole kit on the tracks: the factory kit or one of Strudel's drum machines."
+          title="Put a whole kit on the tracks: the factory kit, the acoustic kit or one of Strudel's drum machines."
         >
           <option value="factory">Factory</option>
           {currentKit === '' && !kitProgress && <option value="">Mixed</option>}
-          {Object.keys(kits).length > 0 && (
+          {Object.keys(kits).some(isAcoustic) && (
+            <optgroup label="Recorded drums">
+              {Object.entries(kits)
+                .filter(([name]) => isAcoustic(name))
+                .map(([name, sounds]) => (
+                  <option key={name} value={name}>
+                    {kitLabel(name)} ({Object.values(sounds).reduce((a, b) => a + b, 0)})
+                  </option>
+                ))}
+            </optgroup>
+          )}
+          {Object.keys(kits).some((n) => !isAcoustic(n)) && (
             <optgroup label="Strudel drum machines">
-              {Object.entries(kits).map(([name, sounds]) => (
+              {Object.entries(kits).filter(([name]) => !isAcoustic(name)).map(([name, sounds]) => (
                 <option key={name} value={name}>
                   {kitLabel(name)} ({Object.values(sounds).reduce((a, b) => a + b, 0)})
                 </option>

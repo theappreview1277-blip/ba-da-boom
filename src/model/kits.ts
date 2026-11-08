@@ -49,6 +49,9 @@ export function kitAssignments(kit: KitSounds, trackCount: number): ([string, nu
   return Array.from({ length: trackCount }, (_, i) => TRACK_SOUNDS[i]?.find(([s, n]) => (kit[s]?.length ?? 0) > n) ?? null);
 }
 
+/** Kits recorded from real drums (shipped with the app), as opposed to Strudel's drum machines. */
+export const isAcoustic = (kit: string) => kit.startsWith('Acoustic');
+
 /** "RolandTR909" -> "Roland TR909", "AkaiMPC60" -> "Akai MPC60". */
 export function kitLabel(name: string): string {
   return name.replace(/([a-z])([A-Z0-9])/g, '$1 $2');

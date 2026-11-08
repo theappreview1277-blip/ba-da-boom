@@ -13,7 +13,7 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
 * Per-step velocity, probability (seeded), microtiming and ratchets
 * Tempo, swing, metronome, mute/solo, immediate stop
 * Patterns with copy/paste/duplicate/clear, undo/redo, quantised switching at the next bar
-* Synthesised CC0 factory kit, sound import: WAV, MP3, FLAC and OGG (drag and drop or Import…; other formats are stored as WAV), auditioning
+* Synthesised CC0 factory kit, an Acoustic Kit recorded from real drums (Virtuosity Drums, CC0), sound import: WAV, MP3, FLAC and OGG (drag and drop or Import…; other formats are stored as WAV), auditioning
 * Kit menu with Strudel's 71 drum machine kits (TR-808, TR-909, LinnDrum, MPC60…), included in the
   installer and fetched by `npm run kits` at build time (not stored in git; no licence is stated for them)
 * Per-track volume, pan, pitch, sample start/end, reverse, attack/decay/sustain/release, choke groups,
