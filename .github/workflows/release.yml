@@ -1,0 +1,35 @@
+name: Release
+
+# Pushing a version tag (v0.1.1, say) builds the Windows installer and uploads it,
+# with the latest.yml the app's update check reads, to a DRAFT GitHub release.
+# Nobody gets the update until that draft is published on GitHub.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: The tag matches the version in package.json
+        shell: bash
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run kits
+      - name: Build the installer and upload it to a draft release
+        run: npx electron-builder --win nsis --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

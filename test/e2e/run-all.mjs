@@ -53,6 +53,7 @@ const suites = [
   ['./formats.mjs', 'MP3, FLAC and OGG sounds'],
   ['./pads.mjs', 'Drum pads, recording, MIDI and sound card'],
   ['./polish.mjs', 'Welcome screen, knobs and mixer'],
+  ['./updates.mjs', 'Updates'],
   ['./sounds.mjs', 'Synths and effects'],
   ['./longplay.mjs', 'Long playback'],
   ['./export.mjs', 'Stem and MIDI export'],

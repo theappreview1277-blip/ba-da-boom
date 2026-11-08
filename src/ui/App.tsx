@@ -32,7 +32,7 @@ import {
 import { applySteps, randomiseLane } from '../model/generate';
 import { FACTORY_SAMPLES } from '../model/factory';
 import { kitAssignments, kitLabel, kitSampleName } from '../model/kits';
-import type { FolderListing, KitProgress, KitSample, Settings, SoundSettings as SoundPrefs, StepLane as LaneKind, ToolTab } from '../main/ipc';
+import type { FolderListing, KitProgress, KitSample, Settings, SoundSettings as SoundPrefs, StepLane as LaneKind, ToolTab, UpdateState } from '../main/ipc';
 import { parseProject, serializeProject } from '../model/serialize';
 import { STEPS_PER_BAR, type Project, type SampleRef } from '../model/types';
 import { NumberField, Slider, db } from './controls';
@@ -58,6 +58,7 @@ import { Pads } from './Pads';
 import { Mixer } from './Mixer';
 import { Logo } from './Logo';
 import { SoundSettings } from './SoundSettings';
+import { UpdateBanner, updateText } from './Updates';
 import { findOutput, listOutputs, Midi, type MidiState, type OutputDevice } from './devices';
 import { hitStep, noteToTrack, PAD_KEYS } from '../model/live';
 
@@ -80,7 +81,7 @@ type Modal =
   | { kind: 'welcome' }
   | { kind: 'removePattern'; id: string }
   | { kind: 'about'; notices: string; version: string; platform: string; logFile: string }
-  | { kind: 'unsaved'; then: 'close' | 'new' | 'open'; path?: string }
+  | { kind: 'unsaved'; then: 'close' | 'new' | 'open' | 'update'; path?: string }
   | null;
 
 export function App() {
@@ -102,6 +103,9 @@ export function App() {
   const [queuedPattern, setQueuedPattern] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
+  const [update, setUpdate] = useState<UpdateState>({ state: 'idle' });
+  // "Later" hides the corner note until the update moves on (say, from downloading to ready).
+  const [updateLater, setUpdateLater] = useState<string | null>(null);
   const dirty = state.savedProject !== project;
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -788,6 +792,11 @@ export function App() {
     },
     [newDoc, open],
   );
+  const restartToUpdate = useCallback(async () => {
+    await desktop.autosaveWrite(serializeProject(projectRef.current)).catch(() => {});
+    if (stateRef.current.savedProject !== projectRef.current) setModal({ kind: 'unsaved', then: 'update' });
+    else await desktop.updateInstall();
+  }, []);
   const guardedRef = useRef(guarded);
   guardedRef.current = guarded;
 
@@ -801,6 +810,8 @@ export function App() {
       else if (settings && !settings.welcomed) setModal({ kind: 'welcome' });
     });
     desktop.onOpenFile((path) => guardedRef.current('open', path));
+    desktop.onUpdateState(setUpdate);
+    desktop.updateGet().then(setUpdate).catch(() => {});
     desktop.onBeforeClose(async () => {
       await desktop.autosaveWrite(serializeProject(projectRef.current)).catch(() => {});
       if (stateRef.current.savedProject !== projectRef.current) {
@@ -1392,6 +1403,9 @@ export function App() {
       </footer>
 
       {toast && <div className="toast" role="status">{toast}</div>}
+      {updateLater !== update.state && (
+        <UpdateBanner update={update} onDownload={() => desktop.updateDownload()} onRestart={restartToUpdate} onLater={() => setUpdateLater(update.state)} />
+      )}
 
       {modal?.kind === 'recover' && (
         <Dialog title="Recover unsaved work?">
@@ -1418,6 +1432,7 @@ export function App() {
               const { then, path } = modal;
               setModal(null);
               if (then === 'close') await desktop.closeReady();
+              else if (then === 'update') await desktop.updateInstall();
               else if (then === 'new') newDoc();
               else open(path);
             }}>Don't save</button>
@@ -1426,6 +1441,7 @@ export function App() {
               if (!(await save(false))) return;
               setModal(null);
               if (then === 'close') await desktop.closeReady();
+              else if (then === 'update') await desktop.updateInstall();
               else if (then === 'new') newDoc();
               else open(path);
             }}>Save</button>
@@ -1544,6 +1560,18 @@ export function App() {
       {modal?.kind === 'about' && (
         <Dialog title="About Ba-da-boom" wide>
           <p>Version {modal.version} · {modal.platform}</p>
+          <div className="about-update">
+            {update.state === 'ready' ? (
+              <button className="primary" onClick={() => { setModal(null); restartToUpdate(); }}>Restart to update</button>
+            ) : update.state === 'available' ? (
+              <button className="primary" onClick={() => desktop.updateDownload()}>Download {update.version}</button>
+            ) : (
+              update.state !== 'off' && (
+                <button disabled={update.state === 'checking' || update.state === 'downloading'} onClick={() => desktop.updateCheck().then(setUpdate)}>Check for updates</button>
+              )
+            )}
+            <span className="update-text" role="status">{updateText(update)}</span>
+          </div>
           <p>
             Ba-da-boom is free software under the GNU Affero General Public License v3.0 or later. Its pattern engine and audio
             engine are <strong>Strudel</strong> (strudel.cc), © Strudel contributors, also AGPL-3.0-or-later. You can get the

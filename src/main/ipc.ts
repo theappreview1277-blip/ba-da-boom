@@ -27,6 +27,11 @@ export const CHANNELS = {
   openFile: 'bdb:open-file',
   log: 'bdb:log',
   showLog: 'bdb:show-log',
+  updateState: 'bdb:update-state',
+  updateGet: 'bdb:update-get',
+  updateCheck: 'bdb:update-check',
+  updateDownload: 'bdb:update-download',
+  updateInstall: 'bdb:update-install',
 } as const;
 
 export const TOOL_TABS = ['library', 'beats', 'generate', 'pads', 'mixer'] as const;
@@ -80,6 +85,20 @@ export interface AppInfo {
   logFile: string;
   notices: string;
 }
+
+/**
+ * Where the app is with updates. "off" when updates can't work here (not the installed app).
+ * "none" after a check found nothing newer; "error" after a check or download failed.
+ */
+export type UpdateState =
+  | { state: 'off' }
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'none' }
+  | { state: 'available'; version: string }
+  | { state: 'downloading'; version: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; message: string };
 
 export interface KitSample {
   sound: string;
@@ -176,4 +195,13 @@ export interface DesktopApi {
   log(level: 'info' | 'warn' | 'error', message: string): Promise<void>;
   /** Show the error log file in Explorer. */
   showLog(): Promise<void>;
+  /** Update news from the main process (checks, downloads). */
+  onUpdateState(cb: (s: UpdateState) => void): void;
+  updateGet(): Promise<UpdateState>;
+  /** Looks for a newer version on GitHub. */
+  updateCheck(): Promise<UpdateState>;
+  /** Downloads the version found by the last check. */
+  updateDownload(): Promise<void>;
+  /** Closes the app, installs the downloaded version and starts it again. */
+  updateInstall(): Promise<void>;
 }
