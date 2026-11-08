@@ -33,7 +33,21 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run kits
-      - name: Build the installer and publish it as a release
-        run: npx electron-builder --win nsis --x64 --publish always
+      # electron-builder only builds; the release is made here in one step, because its own
+      # publisher uploaded the files in parallel and raced itself creating the release.
+      - name: Build the installer
+        run: npx electron-builder --win nsis --x64 --publish never
+      - name: Publish the installer and latest.yml as the release v<version>
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="$(node -p 'require("./package.json").version')"
+          FILES=(release/Ba-da-boom-Setup-$V-x64-unsigned.exe release/Ba-da-boom-Setup-$V-x64-unsigned.exe.blockmap release/latest.yml)
+          ls -l "${FILES[@]}"
+          if gh release view "v$V" > /dev/null 2>&1; then
+            gh release upload "v$V" "${FILES[@]}" --clobber
+          else
+            gh release create "v$V" "${FILES[@]}" --target "$GITHUB_SHA" --title "Ba-da-boom $V" --notes "Windows installer (x64, not code-signed yet, so Windows SmartScreen may warn). Installed copies of Ba-da-boom offer this update by themselves."
+          fi
+          gh release view "v$V" --json assets --jq '.assets[].name'
