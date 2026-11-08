@@ -205,3 +205,10 @@ export function checkLeftovers(s) {
   const found = leftovers.splice(0);
   s.check('closing the app leaves no processes behind', found.length === 0, found.length ? found.map((f) => `${f.pids.length} left (${f.pids.join(' ')})`).join('; ') : 'none');
 }
+
+/** Open a tab of the tool panel under the grid ('Beat library', 'Beat intelligence' or 'Generate'). */
+export async function openTool(win, label) {
+  const tab = win.locator(`.tools-tabs [role=tab]:has-text("${label}")`);
+  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
+  await win.waitForSelector(`.tools-body[aria-label="${label}"]`, { timeout: 3000 });
+}

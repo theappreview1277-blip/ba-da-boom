@@ -4,6 +4,7 @@
 // fills and humanise are changed the way a person would. Sound must never
 // drop out and the audio clock must keep up with real time.
 import { closeApp, launchApp, runStandalone } from './lib.mjs';
+import { openTool } from './lib.mjs';
 
 const SECONDS = Number(process.env.BDB_SMARTPLAY_SECONDS ?? 180);
 
@@ -11,6 +12,7 @@ export async function run(t) {
   const { app, win, pageErrors } = await launchApp();
   win.setDefaultTimeout(15000);
   try {
+    await openTool(win, 'Beat intelligence');
     const cur = () =>
       win.evaluate(() => {
         const p = window.__engine['project'];

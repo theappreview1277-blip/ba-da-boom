@@ -29,6 +29,11 @@ export const CHANNELS = {
   showLog: 'bdb:show-log',
 } as const;
 
+export const TOOL_TABS = ['library', 'beats', 'generate'] as const;
+export type ToolTab = (typeof TOOL_TABS)[number];
+export const STEP_LANES = ['velocity', 'probability', 'micro'] as const;
+export type StepLane = (typeof STEP_LANES)[number];
+
 export interface OpenResult {
   path: string | null;
   text: string;
@@ -85,7 +90,15 @@ export interface Settings {
   /** Starred samples: "factory:<key>", "pool:<file>" or "file:<folder>|<relative path>". */
   favourites: string[];
   /** Side panel widths in CSS pixels; unset means the default for the window size. */
-  layout: { left?: number; right?: number };
+  layout: {
+    left?: number;
+    right?: number;
+    /** The tab open in the tool panel under the grid, and whether the panel is open. */
+    tool?: ToolTab;
+    toolsOpen?: boolean;
+    /** What the step lane under the grid edits. */
+    lane?: StepLane;
+  };
 }
 
 export interface FolderListing {

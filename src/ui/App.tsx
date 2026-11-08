@@ -28,17 +28,19 @@ import {
   songMove,
   songRemove,
   songSetBars,
-  toggleStep,
 } from '../model/ops';
 import { applySteps, randomiseLane } from '../model/generate';
 import { FACTORY_SAMPLES } from '../model/factory';
 import { kitAssignments, kitLabel, kitSampleName } from '../model/kits';
-import type { FolderListing, KitProgress, KitSample } from '../main/ipc';
+import type { FolderListing, KitProgress, KitSample, Settings, StepLane as LaneKind, ToolTab } from '../main/ipc';
 import { parseProject, serializeProject } from '../model/serialize';
 import { STEPS_PER_BAR, type Project, type SampleRef } from '../model/types';
 import { NumberField, Slider, db } from './controls';
 import { desktop, inElectron, sampleUrl } from './desktop';
-import { Grid } from './Grid';
+import { Grid, gridPage, trackHeadWidth, type GridPage } from './Grid';
+import { StepLane } from './StepLane';
+import { Icon } from './icons';
+import { trackColor } from './colors';
 import { Generate } from './Generate';
 import { SmartBeats } from './SmartBeats';
 import { addClassicPatterns, addFillPattern, classicById, classicVariant, completeBeat, fillPattern, generateBeat, humanise, loadClassic, resolveFillType, styleById, FILL_TYPES } from '../model/rhythm';
@@ -52,6 +54,12 @@ import { reorderProps } from './reorder';
 import { useUiStore } from './store';
 
 const AUTOSAVE_MS = 5000;
+
+const TOOLS: { id: ToolTab; label: string; title: string }[] = [
+  { id: 'library', label: 'Beat library', title: 'Named classic beats and their variants' },
+  { id: 'beats', label: 'Beat intelligence', title: 'Style generator, complete my beat, fills and humanise' },
+  { id: 'generate', label: 'Generate', title: 'Euclidean rhythms, randomise and variations' },
+];
 
 const patternName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? String(Math.floor(i / 26) + 1) : '');
 
@@ -145,6 +153,31 @@ export function App() {
     if (engineReady) engineRef.current?.loadSamples(project);
   }, [project.samples, engineReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // --- the bars on screen: whole bars that fit the width, turned by the playhead ---
+  const [pageIndex, setPageIndex] = useState(0);
+  const [follow, setFollow] = useState(true);
+  const [gridWidth, setGridWidth] = useState(900);
+  const gridObserver = useRef<ResizeObserver | null>(null);
+  const gridAreaRef = useCallback((el: HTMLDivElement | null) => {
+    gridObserver.current?.disconnect();
+    gridObserver.current = null;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setGridWidth(el.clientWidth));
+    ro.observe(el);
+    gridObserver.current = ro;
+    setGridWidth(el.clientWidth);
+  }, []);
+  const totalSteps = Math.max(STEPS_PER_BAR, Math.ceil(Math.max(...project.tracks.map((t) => pattern.lanes[t.id]?.length ?? STEPS_PER_BAR)) / STEPS_PER_BAR) * STEPS_PER_BAR);
+  const page: GridPage = useMemo(() => gridPage(totalSteps, gridWidth - 20, pageIndex, trackHeadWidth(window.innerWidth)), [totalSteps, gridWidth, pageIndex]);
+  const pageRef = useRef({ ...page, follow });
+  pageRef.current = { ...page, follow };
+  useEffect(() => setPageIndex(0), [project.currentPatternId]);
+  useEffect(() => {
+    // Fewer pages after a lane got shorter or the window wider: stay on a page that exists.
+    const pages = Math.ceil(page.total / page.steps);
+    if (pageIndex >= pages) setPageIndex(pages - 1);
+  }, [page.total, page.steps, pageIndex]);
+
   // --- playhead and meters, drawn on animation frames, independent of scheduling ---
   const rows = useRef(new Map<string, HTMLDivElement>());
   const rowRef = useCallback((id: string) => (el: HTMLDivElement | null) => {
@@ -195,14 +228,20 @@ export function App() {
       }
       const shown = audible === p.currentPatternId ? cycle : null;
       const pat = currentPattern(p);
+      const pg = pageRef.current;
+      if (shown != null && pg.follow && engine.isPlaying) {
+        // Turn the page when the playhead leaves it.
+        const g = Math.floor(shown * STEPS_PER_BAR) % pg.total;
+        if (g < pg.start || g >= pg.start + pg.steps) setPageIndex(Math.floor(g / pg.steps));
+      }
       for (const t of p.tracks) {
         const row = rows.current.get(t.id);
         if (!row) continue;
         let el: HTMLElement | undefined;
         if (shown != null) {
           const len = pat.lanes[t.id]?.length ?? 16;
-          const step = Math.floor(shown * STEPS_PER_BAR) % len;
-          el = row.children[step] as HTMLElement | undefined;
+          const at = (Math.floor(shown * STEPS_PER_BAR) % len) - pg.start;
+          el = at >= 0 && at < pg.steps ? (row.children[at] as HTMLElement | undefined) : undefined;
         }
         const prev = lastPlay.get(t.id);
         if (prev !== el) {
@@ -286,8 +325,9 @@ export function App() {
   );
 
   // --- editing callbacks (stable, so grid cells don't re-render needlessly) ---
-  const onToggle = useCallback(
-    (trackId: string, step: number) => edit((p) => toggleStep(p, p.currentPatternId, trackId, step)),
+  const onPaint = useCallback(
+    (trackId: string, step: number, on: boolean, gesture: string) =>
+      edit((p) => (currentLane(p, p.currentPatternId, trackId).steps[step]?.on === on ? p : setStep(p, p.currentPatternId, trackId, step, { on })), gesture),
     [edit],
   );
   const onSelect = useCallback((track: string, step?: number) => dispatch({ type: 'select', track, step }), [dispatch]);
@@ -408,7 +448,7 @@ export function App() {
   // The user's sample folders, favourites and panel widths (kept in the app's settings).
   const [folders, setFolders] = useState<FolderListing[]>([]);
   const [favourites, setFavourites] = useState<Set<string>>(new Set());
-  const [layout, setLayout] = useState<{ left?: number; right?: number }>({});
+  const [layout, setLayout] = useState<Settings['layout']>({});
   const [winWidth, setWinWidth] = useState(window.innerWidth);
   useEffect(() => {
     desktop.settingsGet().then((s) => {
@@ -487,10 +527,15 @@ export function App() {
     }
     return { left, right, room, custom: layout.left !== undefined || layout.right !== undefined };
   }, [winWidth, layout]);
-  const saveLayout = useCallback((next: { left?: number; right?: number }) => {
+  const saveLayout = useCallback((next: Settings['layout']) => {
     setLayout(next);
     desktop.settingsSet({ layout: next }).catch(() => {});
   }, []);
+  const tool: ToolTab = layout.tool ?? 'library';
+  // Short windows start with the tools folded away, so all 16 tracks fit.
+  const toolsOpen = layout.toolsOpen ?? window.innerHeight >= 860;
+  const laneKind: LaneKind = layout.lane ?? 'velocity';
+  const onDropFiles = useCallback((id: string, files: File[]) => importFiles(files, id), [importFiles]);
 
   const audition = useCallback(
     (sampleId: string, withTrack?: string) => {
@@ -779,24 +824,26 @@ export function App() {
       <header className="topbar">
         <div className="brand">Ba-da-boom</div>
         <div className="group" role="toolbar" aria-label="File">
-          <button onClick={() => guarded('new')} title="New project">New</button>
-          <button onClick={() => guarded('open')} title="Open project (Ctrl+O)">Open</button>
-          <button onClick={() => save(false)} title="Save (Ctrl+S)">Save</button>
-          <button onClick={() => save(true)} title="Save as (Ctrl+Shift+S)">Save as</button>
-          <button onClick={() => setModal({ kind: 'export' })} title="Export WAV (Ctrl+E)">Export WAV</button>
+          <button className="tb" onClick={() => guarded('new')} title="New project" aria-label="New"><Icon name="new" /><span className="lbl">New</span></button>
+          <button className="tb" onClick={() => guarded('open')} title="Open project (Ctrl+O)" aria-label="Open"><Icon name="open" /><span className="lbl">Open</span></button>
+          <button className="tb" onClick={() => save(false)} title="Save (Ctrl+S)" aria-label="Save"><Icon name="save" /><span className="lbl">Save</span></button>
+          <button className="tb" onClick={() => save(true)} title="Save as (Ctrl+Shift+S)" aria-label="Save as"><Icon name="saveAs" /><span className="lbl">Save as</span></button>
+          <button className="tb" onClick={() => setModal({ kind: 'export' })} title="Export WAV, stems or MIDI (Ctrl+E)" aria-label="Export WAV"><Icon name="export" /><span className="lbl">Export WAV</span></button>
         </div>
         <div className="group" role="toolbar" aria-label="Edit">
-          <button onClick={() => dispatch({ type: 'undo' })} disabled={!state.history.past.length} title="Undo (Ctrl+Z)">Undo</button>
-          <button onClick={() => dispatch({ type: 'redo' })} disabled={!state.history.future.length} title="Redo (Ctrl+Y)">Redo</button>
+          <button className="tb" onClick={() => dispatch({ type: 'undo' })} disabled={!state.history.past.length} title="Undo (Ctrl+Z)" aria-label="Undo"><Icon name="undo" /><span className="lbl">Undo</span></button>
+          <button className="tb" onClick={() => dispatch({ type: 'redo' })} disabled={!state.history.future.length} title="Redo (Ctrl+Y)" aria-label="Redo"><Icon name="redo" /><span className="lbl">Redo</span></button>
         </div>
         <div className="group transport" role="toolbar" aria-label="Transport">
           <button className={`play ${playing ? 'on' : ''}`} onClick={togglePlay} disabled={!engineReady} title="Play / stop (Space)">
-            {playing ? '■ Stop' : '▶ Play'}
+            <Icon name={playing ? 'stop' : 'play'} size={18} />
+            {playing ? 'Stop' : 'Play'}
           </button>
           <NumberField label="BPM" value={project.bpm} min={20} max={300} decimals={1} onCommit={(v) => edit((p) => ({ ...p, bpm: v }))} title="Type a tempo (20–300) and press Enter. Arrow keys: ±1, Shift: ±10" />
           <Slider label="Swing" value={project.swing} min={50} max={75} step={0.5} format={(v) => `${v.toFixed(1)}%`} onChange={(v, k) => edit((p) => ({ ...p, swing: v }), k)} />
           <button className={`toggle ${project.metronome ? 'on' : ''}`} aria-pressed={project.metronome} onClick={() => edit((p) => ({ ...p, metronome: !p.metronome }))} title="Metronome (K)">
-            Click
+            <Icon name="click" />
+            <span className="lbl">Click</span>
           </button>
         </div>
         <div className="group master" aria-label="Master">
@@ -811,12 +858,13 @@ export function App() {
           <span ref={limitRef} className="limit" title="The safety limiter is reducing gain">LIM</span>
         </div>
         <button className={`view-toggle ${view === 'perform' ? 'on' : ''}`} aria-pressed={view === 'perform'} onClick={() => setView(view === 'perform' ? 'edit' : 'perform')} title="Performance view: big pattern pads and track mutes (P)">
-          {view === 'perform' ? 'Edit view' : 'Perform'}
+          <Icon name={view === 'perform' ? 'edit' : 'perform'} />
+          <span className="lbl">{view === 'perform' ? 'Edit view' : 'Perform'}</span>
         </button>
         <button className="about" onClick={async () => {
           const info = await desktop.appInfo();
           setModal({ kind: 'about', notices: info.notices, version: info.version, platform: `${info.platform} · Electron ${info.electron}`, logFile: info.logFile });
-        }}>About</button>
+        }} aria-label="About"><Icon name="info" /><span className="lbl">About</span></button>
       </header>
 
       <nav className="patternbar" aria-label="Patterns">
@@ -925,102 +973,152 @@ export function App() {
             onReset={() => saveLayout({ ...layout, left: undefined })}
           />
           <section className="center">
-            <Grid
-              project={project}
-              pattern={pattern}
-              selectedTrack={state.selectedTrack}
-              selectedStep={state.selectedStep}
-              sampleStatus={sampleStatus}
-              onToggle={onToggle}
-              onSelect={onSelect}
-              onTrack={onTrack}
-              onLength={onLength}
-              onDropFiles={(id, files) => importFiles(files, id)}
-              onDropSample={(trackId, sampleId) => assignSample(trackId, sampleId)}
-              onDropFolderFile={assignFolderFile}
-              meterRef={meterRef}
-              rowRef={rowRef}
-            />
-            <BeatLibrary
-              onLoad={(opts) => {
-                edit((p) => loadClassic(p, opts));
-                const c = classicById(opts.classicId);
-                notify(`${c.name}: ${classicVariant(c, opts.variant).name} loaded into pattern ${pattern.name}`);
-              }}
-              onAddAll={(opts) => {
-                const { project: next, added } = addClassicPatterns(projectRef.current, opts);
-                if (!added.length) {
-                  notify('No room for more patterns');
-                  return;
-                }
-                edit(() => next);
-                // While playing, the first new pattern comes in at the next bar, like pressing its number.
-                engineRef.current?.switchPattern(next.currentPatternId);
-                const names = added.map((id) => next.patterns.find((pt) => pt.id === id)!.name);
-                notify(`Added ${added.length} patterns: ${names[0]} to ${names[names.length - 1]}`);
-              }}
-            />
-            <SmartBeats
-              project={project}
-              pattern={pattern}
-              trackIndex={trackIndex}
-              onBeat={(opts) => {
-                edit((p) => generateBeat(p, opts));
-                const s = styleById(opts.styleId);
-                notify(`${s.genre}: ${s.name} beat written (seed ${opts.seed})`);
-              }}
-              onComplete={(opts) => {
-                const { project: next, filled } = completeBeat(projectRef.current, opts);
-                if (!filled.length) {
-                  notify('Every track this pattern uses already has hits');
-                  return;
-                }
-                edit(() => next);
-                notify(`Completed with ${styleById(opts.styleId).name}: ${filled.map((id) => next.tracks.find((t) => t.id === id)?.name).join(', ')}`);
-              }}
-              onFill={(opts, asNew) => {
-                const kind = FILL_TYPES.find((f) => f.id === resolveFillType(projectRef.current, opts))?.name ?? 'Fill';
-                if (asNew) {
-                  const next = addFillPattern(projectRef.current, opts);
-                  edit(() => next);
-                  // While playing, the fill pattern comes in at the next bar, like pressing its number.
-                  engineRef.current?.switchPattern(next.currentPatternId);
-                  notify(`Pattern ${currentPattern(next).name} added (${kind.toLowerCase()})`);
-                } else {
-                  edit((p) => fillPattern(p, opts));
-                  notify(`${kind} written into the end of pattern ${pattern.name}`);
-                }
-              }}
-              onHumanise={(opts, scope) => {
-                const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
-                edit((p) => humanise(p, ids, opts));
-                notify(`Humanised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'}`);
-              }}
-            />
-            <Generate
-              trackIndex={trackIndex}
-              laneLength={lane.length}
-              lockedCount={lane.steps.filter((s) => s.locked).length}
-              patternName={pattern.name}
-              onVariation={(opts) => {
-                const next = addVariation(projectRef.current, projectRef.current.currentPatternId, opts);
-                edit(() => next);
-                // While playing, the new pattern comes in at the next bar, like pressing its number.
-                engineRef.current?.switchPattern(next.currentPatternId);
-                notify(`Pattern ${currentPattern(next).name} added`);
-              }}
-              onEuclid={(bits) => {
-                edit((p) => setLane(p, p.currentPatternId, track.id, (l) => applySteps(l, bits)));
-                notify(`Euclidean rhythm written to track ${trackIndex + 1}`);
-              }}
-              onRandomise={(opts, scope) => {
-                const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
-                edit((p) =>
-                  ids.reduce((q, id) => setLane(q, q.currentPatternId, id, (l) => randomiseLane(l, { ...opts, salt: p.tracks.findIndex((t) => t.id === id) })), p),
-                );
-                notify(`Randomised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'} (seed ${opts.seed})`);
-              }}
-            />
+            <div className="grid-area" ref={gridAreaRef}>
+              <Grid
+                project={project}
+                pattern={pattern}
+                selectedTrack={state.selectedTrack}
+                selectedStep={state.selectedStep}
+                sampleStatus={sampleStatus}
+                page={page}
+                follow={follow}
+                onPage={setPageIndex}
+                onFollow={setFollow}
+                onPaint={onPaint}
+                onSelect={onSelect}
+                onTrack={onTrack}
+                onLength={onLength}
+                onDropFiles={onDropFiles}
+                onDropSample={assignSample}
+                onDropFolderFile={assignFolderFile}
+                meterRef={meterRef}
+                rowRef={rowRef}
+              />
+              <StepLane
+                lane={lane}
+                page={page}
+                kind={laneKind}
+                color={trackColor(trackIndex)}
+                trackName={track.name}
+                onKind={(k) => saveLayout({ ...layout, lane: k })}
+                onSet={(stepIndex, patch, gesture) => edit((p) => setStep(p, p.currentPatternId, track.id, stepIndex, patch), gesture)}
+              />
+            </div>
+            <div className={`tools ${toolsOpen ? 'open' : ''}`}>
+              <div className="tools-tabs" role="tablist" aria-label="Tools">
+                {TOOLS.map((t) => (
+                  <button
+                    key={t.id}
+                    role="tab"
+                    aria-selected={toolsOpen && tool === t.id}
+                    className={`tool-tab ${toolsOpen && tool === t.id ? 'on' : ''}`}
+                    title={t.title}
+                    onClick={() => saveLayout({ ...layout, tool: t.id, toolsOpen: !(toolsOpen && tool === t.id) })}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+                <span className="tools-spacer" />
+                <button
+                  className="small tools-toggle"
+                  aria-expanded={toolsOpen}
+                  title={toolsOpen ? 'Hide the tools to give the grid more room' : 'Show the tools'}
+                  onClick={() => saveLayout({ ...layout, toolsOpen: !toolsOpen })}
+                >
+                  {toolsOpen ? 'Hide ▾' : 'Show ▴'}
+                </button>
+              </div>
+              {(
+                <div className="tools-body" role="tabpanel" hidden={!toolsOpen} aria-label={TOOLS.find((t) => t.id === tool)!.label}>
+                  <div className="tool-page" hidden={tool !== 'library'}>{(
+                  <BeatLibrary
+                    onLoad={(opts) => {
+                      edit((p) => loadClassic(p, opts));
+                      const c = classicById(opts.classicId);
+                      notify(`${c.name}: ${classicVariant(c, opts.variant).name} loaded into pattern ${pattern.name}`);
+                    }}
+                    onAddAll={(opts) => {
+                      const { project: next, added } = addClassicPatterns(projectRef.current, opts);
+                      if (!added.length) {
+                        notify('No room for more patterns');
+                        return;
+                      }
+                      edit(() => next);
+                      // While playing, the first new pattern comes in at the next bar, like pressing its number.
+                      engineRef.current?.switchPattern(next.currentPatternId);
+                      const names = added.map((id) => next.patterns.find((pt) => pt.id === id)!.name);
+                      notify(`Added ${added.length} patterns: ${names[0]} to ${names[names.length - 1]}`);
+                    }}
+                  />
+                  )}</div>
+                  <div className="tool-page" hidden={tool !== 'beats'}>{(
+                  <SmartBeats
+                    project={project}
+                    pattern={pattern}
+                    trackIndex={trackIndex}
+                    onBeat={(opts) => {
+                      edit((p) => generateBeat(p, opts));
+                      const s = styleById(opts.styleId);
+                      notify(`${s.genre}: ${s.name} beat written (seed ${opts.seed})`);
+                    }}
+                    onComplete={(opts) => {
+                      const { project: next, filled } = completeBeat(projectRef.current, opts);
+                      if (!filled.length) {
+                        notify('Every track this pattern uses already has hits');
+                        return;
+                      }
+                      edit(() => next);
+                      notify(`Completed with ${styleById(opts.styleId).name}: ${filled.map((id) => next.tracks.find((t) => t.id === id)?.name).join(', ')}`);
+                    }}
+                    onFill={(opts, asNew) => {
+                      const kind = FILL_TYPES.find((f) => f.id === resolveFillType(projectRef.current, opts))?.name ?? 'Fill';
+                      if (asNew) {
+                        const next = addFillPattern(projectRef.current, opts);
+                        edit(() => next);
+                        // While playing, the fill pattern comes in at the next bar, like pressing its number.
+                        engineRef.current?.switchPattern(next.currentPatternId);
+                        notify(`Pattern ${currentPattern(next).name} added (${kind.toLowerCase()})`);
+                      } else {
+                        edit((p) => fillPattern(p, opts));
+                        notify(`${kind} written into the end of pattern ${pattern.name}`);
+                      }
+                    }}
+                    onHumanise={(opts, scope) => {
+                      const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
+                      edit((p) => humanise(p, ids, opts));
+                      notify(`Humanised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'}`);
+                    }}
+                  />
+                  )}</div>
+                  <div className="tool-page" hidden={tool !== 'generate'}>{(
+                  <Generate
+                    trackIndex={trackIndex}
+                    laneLength={lane.length}
+                    lockedCount={lane.steps.filter((s) => s.locked).length}
+                    patternName={pattern.name}
+                    onVariation={(opts) => {
+                      const next = addVariation(projectRef.current, projectRef.current.currentPatternId, opts);
+                      edit(() => next);
+                      // While playing, the new pattern comes in at the next bar, like pressing its number.
+                      engineRef.current?.switchPattern(next.currentPatternId);
+                      notify(`Pattern ${currentPattern(next).name} added`);
+                    }}
+                    onEuclid={(bits) => {
+                      edit((p) => setLane(p, p.currentPatternId, track.id, (l) => applySteps(l, bits)));
+                      notify(`Euclidean rhythm written to track ${trackIndex + 1}`);
+                    }}
+                    onRandomise={(opts, scope) => {
+                      const ids = scope === 'track' ? [track.id] : project.tracks.map((t) => t.id);
+                      edit((p) =>
+                        ids.reduce((q, id) => setLane(q, q.currentPatternId, id, (l) => randomiseLane(l, { ...opts, salt: p.tracks.findIndex((t) => t.id === id) })), p),
+                      );
+                      notify(`Randomised ${scope === 'track' ? `track ${trackIndex + 1}` : 'all tracks'} (seed ${opts.seed})`);
+                    }}
+                  />
+                  )}</div>
+                </div>
+              )}
+            </div>
           </section>
           <Splitter
             side="right"
