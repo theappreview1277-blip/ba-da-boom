@@ -220,6 +220,44 @@ export async function run(t) {
     await sleep(200);
     t.check('System default can be chosen again', (await win.evaluate(() => window.__sinkCalls.at(-1))) === '');
     await win.click('.modal button:has-text("Close")');
+
+    // 7. Choosing each pad's key and MIDI note by hand.
+    await openTool(win, 'Pads');
+    const keyNote = async () => (await project()).tracks.map((x) => [x.key, x.note]);
+    await win.click('.pads-head button:has-text("Set keys and notes")');
+    t.check('"Set keys and notes" starts with the first pad', (await win.locator('.drum-pad.target').getAttribute('data-pad')) === '0' && (await win.isVisible('.assign-bar')));
+    await win.click('.drum-pad[data-pad="2"]');
+    t.check('clicking a pad picks it instead of playing it', (await win.locator('.drum-pad.target').getAttribute('data-pad')) === '2' && (await win.textContent('.assign-bar')).includes('Snare'), await win.textContent('.assign-bar'));
+    await win.keyboard.press('q');
+    t.check('pressing a key gives it to that pad', (await keyNote())[2][0] === 'q' && (await win.locator('.drum-pad[data-pad="2"] kbd').textContent()) === 'Q', JSON.stringify((await keyNote())[2]));
+    t.check('then the next pad is picked', (await win.locator('.drum-pad.target').getAttribute('data-pad')) === '3');
+    await win.evaluate(() => window.__fakeMidi.send('Test Pads', [0x90, 60, 100]));
+    await sleep(100);
+    t.check('hitting a controller pad gives its note to the picked pad', (await keyNote())[3][1] === 60 && (await win.locator('.drum-pad[data-pad="3"] .pad-note').textContent()) === 'C3', JSON.stringify((await keyNote())[3]));
+    const wasPlaying = await win.evaluate(() => window.__engine.isPlaying);
+    await win.keyboard.press('Space');
+    t.check('a key that cannot play a pad says so and changes nothing', (await win.textContent('.toast').catch(() => '')).includes("can't play a pad") && (await win.evaluate(() => window.__engine.isPlaying)) === wasPlaying && (await keyNote())[4][0] === undefined, await win.textContent('.toast').catch(() => ''));
+    await win.keyboard.press('Backspace');
+    t.check('Backspace leaves the pad with no key and no note', JSON.stringify((await keyNote())[4]) === '["",-1]' && (await win.locator('.drum-pad[data-pad="4"] .pad-none').count()) === 2, JSON.stringify((await keyNote())[4]));
+    await win.keyboard.press('Control+z');
+    t.check('undo takes a choice back', (await keyNote())[4][0] === undefined, JSON.stringify((await keyNote())[4]));
+    await win.click('.pads-head button:has-text("Done")');
+    t.check('Done ends choosing', !(await win.isVisible('.assign-bar')) && !(await win.locator('.drum-pad.target').count()));
+    await blur();
+    await win.keyboard.press('q');
+    const snareQ = await trackPeak(2);
+    t.check('the chosen key plays its pad', snareQ > 0.01, snareQ.toFixed(3));
+    await win.evaluate(() => window.__fakeMidi.send('Test Pads', [0x90, 60, 100]));
+    const clap60 = await trackPeak(3);
+    t.check('the chosen MIDI note plays its pad', clap60 > 0.01, clap60.toFixed(3));
+    await win.keyboard.press('z');
+    const kickZ = await trackPeak(0);
+    t.check('pads left alone keep their usual key', kickZ > 0.01, kickZ.toFixed(3));
+    await win.click('.pads-head button:has-text("Set keys and notes")');
+    await win.click('.assign-bar button:has-text("Back to the usual layout")');
+    t.check('"Back to the usual layout" forgets every choice', (await keyNote()).every(([k, n]) => k === undefined && n === undefined) && (await win.locator('.drum-pad[data-pad="2"] kbd').textContent()) === 'C');
+    await win.keyboard.press('Escape');
+    t.check('Escape ends choosing too', !(await win.isVisible('.assign-bar')));
     t.check('no page errors', pageErrors.length === 0, pageErrors.join(' | ') || 'none');
   } finally {
     await closeApp(app, win);

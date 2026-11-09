@@ -1512,6 +1512,38 @@ button.link {
   border-radius: 3px;
 }
 
+/* Choosing each pad's key and MIDI note */
+.assign-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.assign-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius);
+}
+.assign-bar span {
+  flex: 1;
+  min-width: 200px;
+}
+.pad-grid.choosing .drum-pad {
+  border-style: dashed;
+}
+.drum-pad.target {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-style: solid;
+}
+.pad-none {
+  font-style: italic;
+  opacity: 0.7;
+}
+
 /* Settings window */
 .settings section {
   margin-bottom: 14px;

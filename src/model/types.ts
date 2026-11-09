@@ -111,6 +111,10 @@ export interface Track {
   mute: boolean;
   solo: boolean;
   sound: TrackSound;
+  /** The computer key that plays this track's pad, chosen by hand. '' means none; unset uses the usual layout. */
+  key?: string;
+  /** The MIDI note that plays this track's pad, chosen by hand. -1 means none; unset uses the MIDI notes setting. */
+  note?: number;
 }
 
 export interface Pattern {
