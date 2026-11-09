@@ -1805,3 +1805,68 @@ button.link {
 .update-text {
   color: var(--muted);
 }
+
+/* --- the sample list can fold away to a narrow strip --- */
+.browser-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.browser-title h3 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.left.folded {
+  overflow: hidden;
+}
+.samples-rail {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.samples-rail:hover {
+  color: var(--text);
+  background: var(--panel-2, rgba(255, 255, 255, 0.04));
+}
+.samples-rail span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sample-line {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.sample-line strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sample-line .link {
+  margin-left: auto;
+  flex: none;
+}
+.to-mixer {
+  display: block;
+  max-width: 100%;
+  margin: 14px 0 4px;
+  white-space: normal;
+  text-align: left;
+}

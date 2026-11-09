@@ -131,6 +131,8 @@ export interface Settings {
     /** The tab open in the tool panel under the grid, and whether the panel is open. */
     tool?: ToolTab;
     toolsOpen?: boolean;
+    /** False when the sample list is folded away. */
+    samples?: boolean;
     /** What the step lane under the grid edits. */
     lane?: StepLane;
   };

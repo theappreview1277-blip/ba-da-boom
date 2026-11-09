@@ -86,6 +86,9 @@ type Modal =
   | { kind: 'unsaved'; then: 'close' | 'new' | 'open' | 'update'; path?: string }
   | null;
 
+/** Width of the sample list when folded away. */
+const RAIL = 36;
+
 export function App() {
   const { state, dispatch, edit } = useUiStore();
   const project = state.history.present;
@@ -208,8 +211,6 @@ export function App() {
   const meterRef = useCallback((i: number) => (el: HTMLDivElement | null) => void (trackMeters.current[i] = el), []);
   const mixerMeters = useRef<(HTMLDivElement | null)[]>([]);
   const mixerMeterRef = useCallback((i: number) => (el: HTMLDivElement | null) => void (mixerMeters.current[i] = el), []);
-  const mixerMaster = useRef<HTMLDivElement | null>(null);
-  const mixerMasterRef = useCallback((el: HTMLDivElement | null) => void (mixerMaster.current = el), []);
   const masterL = useRef<HTMLDivElement | null>(null);
   const masterR = useRef<HTMLDivElement | null>(null);
   const clipRef = useRef<HTMLButtonElement | null>(null);
@@ -282,7 +283,6 @@ export function App() {
         const mx = mixerMeters.current[i];
         if (mx) mx.style.transform = `scaleY(${level(v)})`;
       });
-      if (mixerMaster.current) mixerMaster.current.style.transform = `scaleY(${level(Math.max(m.left, m.right))})`;
       if (masterL.current) masterL.current.style.transform = `scaleX(${level(m.left)})`;
       if (masterR.current) masterR.current.style.transform = `scaleX(${level(m.right)})`;
       clipRef.current?.classList.toggle('on', m.clip);
@@ -550,14 +550,15 @@ export function App() {
   const panels = useMemo(() => {
     const [dl, dr] = winWidth > 1320 ? [220, 330] : winWidth > 1100 ? [170, 280] : [130, 240];
     const room = winWidth - (winWidth > 1320 ? 760 : 640);
-    let left = layout.left ?? dl;
+    const samplesShown = layout.samples ?? true;
+    let left = samplesShown ? layout.left ?? dl : RAIL;
     let right = layout.right ?? dr;
     const over = left + right - room;
     if (over > 0) {
-      left = Math.max(120, Math.round(left - (over * left) / (left + right)));
+      if (samplesShown) left = Math.max(120, Math.round(left - (over * left) / (left + right)));
       right = Math.max(200, room - left);
     }
-    return { left, right, room, custom: layout.left !== undefined || layout.right !== undefined };
+    return { left, right, room, samplesShown, custom: !samplesShown || layout.left !== undefined || layout.right !== undefined };
   }, [winWidth, layout]);
   /** Close the welcome screen; it is not shown at start-up again (About shows it). */
   const endWelcome = useCallback(() => {
@@ -1136,7 +1137,7 @@ export function App() {
           <Icon name={view === 'perform' ? 'edit' : 'perform'} />
           <span className="lbl">{view === 'perform' ? 'Edit view' : 'Perform'}</span>
         </button>
-        <button className="settings-btn" onClick={() => setModal({ kind: 'settings' })} aria-label="Settings" title="Sound card, MIDI controller and playing settings">
+        <button className="settings-btn" onClick={() => setModal({ kind: 'settings' })} aria-label="Settings" title="Sound card and MIDI controller">
           <Icon name="settings" />
         </button>
         <button className="about" onClick={async () => {
@@ -1240,8 +1241,10 @@ export function App() {
           className="workspace"
           style={panels.custom ? ({ '--left-w': `${panels.left}px`, '--right-w': `${panels.right}px` } as React.CSSProperties) : undefined}
         >
-          <aside className="left">
+          <aside className={`left ${panels.samplesShown ? '' : 'folded'}`}>
+            {panels.samplesShown ? (
             <SampleBrowser
+              onHide={() => saveLayout({ ...layout, samples: false })}
               project={project}
               selectedSampleId={track.sound.sampleId}
               status={sampleStatus}
@@ -1261,7 +1264,14 @@ export function App() {
               onFolderAudition={auditionFolderFile}
               onFolderAssign={(folder, file) => assignFolderFile(track.id, folder, file)}
             />
+            ) : (
+              <button className="samples-rail" onClick={() => saveLayout({ ...layout, samples: true })} title="Show the sample list" aria-label="Show the sample list">
+                <Icon name="open" />
+                <span>Sounds</span>
+              </button>
+            )}
           </aside>
+          {panels.samplesShown ? (
           <Splitter
             side="left"
             label="Resize sample list"
@@ -1272,6 +1282,9 @@ export function App() {
             onCommit={(w) => saveLayout({ ...layout, left: w })}
             onReset={() => saveLayout({ ...layout, left: undefined })}
           />
+          ) : (
+            <div className="splitter-col" />
+          )}
           <section className="center">
             <div className="grid-area" ref={gridAreaRef}>
               <Grid
@@ -1443,14 +1456,10 @@ export function App() {
                   <div className="tool-page" hidden={tool !== 'mixer'}>
                     <Mixer
                       tracks={project.tracks}
-                      masterVolume={project.masterVolume}
                       selectedTrack={state.selectedTrack}
                       meterRef={mixerMeterRef}
-                      masterMeterRef={mixerMasterRef}
                       onSound={(id, patch, k) => edit((p) => setTrackSound(p, id, patch), k && `sound:${id}:${k}`)}
-                      onTrack={onTrack}
                       onSelect={(id) => onSelect(id)}
-                      onMaster={(v, k) => edit((p) => ({ ...p, masterVolume: v }), k)}
                     />
                   </div>
                 </div>
@@ -1480,6 +1489,8 @@ export function App() {
               onSound={(patch, k) => edit((p) => setTrackSound(p, track.id, patch), k && `sound:${k}`)}
               onRename={(name) => edit((p) => setTrack(p, track.id, { name }), `rename:${track.id}`)}
               onAudition={() => auditionTrack(track.id)}
+              onMixer={() => saveLayout({ ...layout, tool: 'mixer', toolsOpen: true })}
+              onPickSample={() => saveLayout({ ...layout, samples: true })}
             />
           </aside>
         </main>

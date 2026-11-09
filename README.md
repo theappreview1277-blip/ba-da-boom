@@ -47,7 +47,11 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
   natural, laid back, pushed and tight feels. Break-style patterns are rhythms written for the grid and
   played with your kit; no recordings are included
 * Sample folders: add your own folders of sounds (WAV, MP3, FLAC, OGG) to the sample list (remembered), favourites (☆),
-  resizable side panels (drag the edges, double-click to reset)
+  resizable side panels (drag the edges, double-click to reset); the sample list folds away (Hide) to a
+  narrow Sounds strip
+* Each control has one place: step loudness, chance and timing in the strip under the tracks; level, pan
+  and effect sends in the Mixer; mute and solo on the track rows; master level in the top bar; pad
+  options on the Pads tab
 
 Not yet built (planned): Strudel code editor. See `docs/PLAN.md`.
 
