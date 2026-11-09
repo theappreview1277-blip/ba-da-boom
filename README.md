@@ -71,6 +71,7 @@ Not yet built (planned): Strudel code editor. See `docs/PLAN.md`.
 | Delete, Shift+Delete | Clear lane / pattern |
 | Ctrl+D | Duplicate pattern |
 | F2 (or double-click a pattern) | Rename pattern |
+| Pads → Set keys and notes | Click a pad, then press a key or hit a controller pad to make it play that pad (Backspace: none, Esc: done) |
 | Ctrl+Delete | Remove pattern (asks first if it has steps or is in the song) |
 | Alt+Left, Alt+Right | Move the current pattern in the list (or drag the pattern tabs) |
 | Ctrl+S, Ctrl+Shift+S, Ctrl+O | Save, save as, open |

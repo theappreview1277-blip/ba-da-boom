@@ -62,7 +62,7 @@ import { Logo } from './Logo';
 import { SoundSettings } from './SoundSettings';
 import { UpdateBanner, updateText } from './Updates';
 import { findOutput, listOutputs, Midi, type MidiState, type OutputDevice } from './devices';
-import { hitStep, noteToTrack, PAD_KEYS } from '../model/live';
+import { ASSIGNABLE_KEY, assignKey, assignNote, hitStep, keyToPad, noteName, noteToPad, padKeyList, padNoteList, resetPadAssignments } from '../model/live';
 
 const AUTOSAVE_MS = 5000;
 
@@ -678,6 +678,37 @@ export function App() {
     if (!playing) setRecording(false);
   }, [playing]);
 
+  // Choosing each pad's key and MIDI note: the pad waiting for one (tracks.length: none picked yet), or null.
+  const [assigning, setAssigning] = useState<number | null>(null);
+  const assignRef = useRef(assigning);
+  assignRef.current = assigning;
+  const assignTo = useCallback(
+    (pad: number, what: { key?: string; note?: number }) => {
+      const t = projectRef.current.tracks[pad];
+      if (!t) return;
+      edit((p) => {
+        let q = what.key !== undefined ? assignKey(p, t.id, what.key) : p;
+        if (what.note !== undefined) q = assignNote(q, t.id, what.note);
+        return q;
+      });
+      // A key chosen here should work straight away.
+      if (what.key && !soundRef.current.padKeys) saveSound({ padKeys: true });
+      if (what.key === '' && what.note === -1) notify(`${t.name} has no key or MIDI note now`);
+      else if (what.key) notify(`Key ${what.key.toUpperCase()} plays ${t.name}`);
+      else if (what.note !== undefined && what.note >= 0) notify(`MIDI note ${noteName(what.note)} (${what.note}) plays ${t.name}`);
+      // On to the next pad, so a whole kit can be set up in one go.
+      if (what.key !== '' && what.note !== -1) setAssigning((a) => (a === pad ? pad + 1 : a));
+    },
+    [edit, saveSound, notify],
+  );
+  const assignToRef = useRef(assignTo);
+  assignToRef.current = assignTo;
+  const padKeysShown = useMemo(() => padKeyList(project.tracks), [project.tracks]);
+  const padNotesShown = useMemo(() => padNoteList(project.tracks, sound.midiMap ?? 'gm'), [project.tracks, sound.midiMap]);
+  useEffect(() => {
+    if (tool !== 'pads' || !toolsOpen) setAssigning(null);
+  }, [tool, toolsOpen]);
+
   const midiRef = useRef<Midi | null>(null);
   const [midiState, setMidiState] = useState<MidiState>({ status: 'off', inputs: [] });
   const [lastNote, setLastNote] = useState<{ note: number; input: string; track: string | null } | null>(null);
@@ -687,7 +718,15 @@ export function App() {
     midi.onState = setMidiState;
     midi.onNote = (note, velocity, input) => {
       const p = projectRef.current;
-      const i = noteToTrack(note, soundRef.current.midiMap ?? 'gm', p.tracks.length);
+      const target = assignRef.current;
+      if (target !== null && target < p.tracks.length) {
+        // Choosing notes: this note now plays the pad waiting for one.
+        assignToRef.current(target, { note });
+        setLastNote({ note, input, track: p.tracks[target].name });
+        hitRef.current(target, velocity);
+        return;
+      }
+      const i = noteToPad(note, p.tracks, soundRef.current.midiMap ?? 'gm');
       setLastNote({ note, input, track: i == null ? null : p.tracks[i].name });
       if (i != null) hitRef.current(i, velocity);
     };
@@ -912,7 +951,25 @@ export function App() {
       const st = stateRef.current;
       const p = projectRef.current;
       const k = e.key.toLowerCase();
-      const pad = soundRef.current.padKeys && !ctrl && !e.altKey ? PAD_KEYS.indexOf(k) : -1;
+      const waiting = assignRef.current;
+      if (waiting !== null && !ctrl && !e.altKey) {
+        // Choosing keys: the next key pressed goes to the pad waiting for one.
+        if (e.key === 'Escape') setAssigning(null);
+        else if (waiting >= p.tracks.length) {
+          if (e.key.length !== 1) return;
+          notify('Click the pad to give that key to first.');
+        } else if ((e.key === 'Backspace' || e.key === 'Delete')) assignToRef.current(waiting, { key: '', note: -1 });
+        else if (ASSIGNABLE_KEY.test(k)) {
+          if (!e.repeat) {
+            assignToRef.current(waiting, { key: k });
+            hitRef.current(waiting, 0.8);
+          }
+        } else if (e.key.length === 1 || e.key === 'Enter') notify(`${e.key === ' ' ? 'Space' : e.key} can't play a pad. Use a letter, a number or a punctuation key.`);
+        else return; // Tab, arrows and the like keep working.
+        e.preventDefault();
+        return;
+      }
+      const pad = soundRef.current.padKeys && !ctrl && !e.altKey ? keyToPad(k, p.tracks) : -1;
       if (pad >= 0) {
         // While "Keys play pads" is on, these letters play the pads instead of their shortcuts.
         e.preventDefault();
@@ -1365,8 +1422,16 @@ export function App() {
                       recording={recording}
                       quantise={sound.quantise ?? true}
                       padKeys={sound.padKeys ?? false}
-                      midiMap={sound.midiMap ?? 'gm'}
+                      keys={padKeysShown}
+                      notes={padNotesShown}
                       midi={midiState}
+                      assigning={assigning}
+                      onAssign={setAssigning}
+                      onClearPad={(i) => assignTo(i, { key: '', note: -1 })}
+                      onResetAll={() => {
+                        edit(resetPadAssignments);
+                        notify('Pads are back to the usual keys and notes');
+                      }}
                       padRef={padRef}
                       onHit={hit}
                       onRecord={() => void toggleRecord()}

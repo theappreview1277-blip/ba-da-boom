@@ -1,7 +1,7 @@
 // Playing live: which track a MIDI note or a key plays, and where a hit lands
 // in the pattern when recording.
 import type { MidiMap } from '../main/ipc';
-import { STEPS_PER_BAR } from './types';
+import { STEPS_PER_BAR, type Project, type Track } from './types';
 
 /**
  * General MIDI drum notes, mapped onto the factory kit's track order
@@ -63,6 +63,71 @@ export function parseNoteOn(data: ArrayLike<number>): { note: number; velocity: 
 
 /** Keys that play pads 1–16 when "Keys play pads" is on: the bottom letter row, then the middle row. */
 export const PAD_KEYS = ['z', 'x', 'c', 'v', 'b', 'n', 'm', ',', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k'];
+
+/** Keys a pad can be given: letters, digits and the punctuation keys next to them. */
+export const ASSIGNABLE_KEY = /^[a-z0-9,./;'[\]\-=`#\\]$/;
+
+type PadTrack = Pick<Track, 'key' | 'note'>;
+
+/**
+ * The key each pad plays from: the one chosen for its track, otherwise the usual
+ * layout (Z X C V … by position) unless another track has been given that key.
+ */
+export function padKeyList(tracks: PadTrack[]): (string | null)[] {
+  const chosen = new Set(tracks.map((t) => t.key).filter(Boolean));
+  return tracks.map((t, i) => {
+    if (t.key !== undefined) return t.key || null;
+    const k = PAD_KEYS[i];
+    return k && !chosen.has(k) ? k : null;
+  });
+}
+
+/** The pad a key plays, or -1. */
+export function keyToPad(key: string, tracks: PadTrack[]): number {
+  return padKeyList(tracks).indexOf(key);
+}
+
+/** The MIDI note shown on each pad: the chosen one, otherwise the lowest note the notes setting gives it. */
+export function padNoteList(tracks: PadTrack[], map: MidiMap): (number | null)[] {
+  const chosen = new Set(tracks.map((t) => t.note).filter((n) => n !== undefined && n >= 0));
+  return tracks.map((t, i) => {
+    if (t.note !== undefined) return t.note >= 0 ? t.note : null;
+    const n = trackNote(i, map);
+    return n != null && !chosen.has(n) ? n : null;
+  });
+}
+
+/**
+ * The pad a MIDI note plays, or null: a track given that note by hand first, otherwise
+ * the notes setting, as long as the track it points at has not been given its own note
+ * and no other track has taken this one.
+ */
+export function noteToPad(note: number, tracks: PadTrack[], map: MidiMap): number | null {
+  const own = tracks.findIndex((t) => t.note === note);
+  if (own >= 0) return own;
+  const i = noteToTrack(note, map, tracks.length);
+  return i != null && tracks[i].note === undefined ? i : null;
+}
+
+/** Gives a track its key ('' for none). No other track keeps the same key. */
+export function assignKey(p: Project, trackId: string, key: string): Project {
+  return {
+    ...p,
+    // Another track given the same key by hand loses it. (One that only had it from the usual
+    // layout gives it up by itself, and gets it back if this track lets it go again.)
+    tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, key } : key && t.key === key ? { ...t, key: '' } : t)),
+  };
+}
+
+/** Gives a track its MIDI note (-1 for none). No other track keeps the same note. */
+export function assignNote(p: Project, trackId: string, note: number): Project {
+  return { ...p, tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, note } : note >= 0 && t.note === note ? { ...t, note: -1 } : t)) };
+}
+
+/** Back to the usual layout: every key and note chosen by hand is forgotten. */
+export function resetPadAssignments(p: Project): Project {
+  return { ...p, tracks: p.tracks.map(({ key: _k, note: _n, ...t }) => t) };
+}
 
 /**
  * Where a hit heard at `cycle` bars into the pattern lands in a lane of `length`

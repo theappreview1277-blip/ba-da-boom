@@ -1,5 +1,6 @@
 import { defaultSound, emptyLane, emptyStep } from './defaults';
 import { factorySampleRefs } from './factory';
+import { ASSIGNABLE_KEY } from './live';
 import {
   MAX_SONG_BARS,
   MAX_STEPS,
@@ -138,6 +139,8 @@ export function parseProject(text: string): Project {
       mute: bool(o.mute, false),
       solo: bool(o.solo, false),
       sound: readSound(o.sound),
+      ...(typeof o.key === 'string' && (o.key === '' || ASSIGNABLE_KEY.test(o.key)) ? { key: o.key } : {}),
+      ...(Number.isInteger(o.note) && (o.note as number) >= -1 && (o.note as number) <= 127 ? { note: o.note as number } : {}),
     };
   });
   if (tracks.length === 0) throw new ProjectFormatError('The project has no tracks.');
