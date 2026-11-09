@@ -1,5 +1,6 @@
-// The mixer: every track side by side, with its level, pan, effect sends,
-// mute and solo, and a meter; the master level at the end.
+// The mixer: every track side by side, with its level, pan, effect sends and a
+// meter. Mute and solo stay on the track rows and the master level in the top
+// bar, so each control has one place.
 import { memo, useRef } from 'react';
 import type { Track, TrackSound } from '../model/types';
 import { trackColor } from './colors';
@@ -7,14 +8,10 @@ import { db, Knob, pct } from './controls';
 
 interface Props {
   tracks: Track[];
-  masterVolume: number;
   selectedTrack: string;
   meterRef: (index: number) => (el: HTMLDivElement | null) => void;
-  masterMeterRef: (el: HTMLDivElement | null) => void;
   onSound: (trackId: string, patch: Partial<TrackSound>, mergeKey?: string) => void;
-  onTrack: (trackId: string, patch: { mute?: boolean; solo?: boolean }) => void;
   onSelect: (trackId: string) => void;
-  onMaster: (v: number, mergeKey: string) => void;
 }
 
 const panText = (v: number) => (Math.abs(v) < 0.01 ? 'C' : v < 0 ? `L${Math.round(-v * 100)}` : `R${Math.round(v * 100)}`);
@@ -44,7 +41,7 @@ function Fader({ label, value, max, onChange }: { label: string; value: number; 
   );
 }
 
-export const Mixer = memo(function Mixer({ tracks, masterVolume, selectedTrack, meterRef, masterMeterRef, onSound, onTrack, onSelect, onMaster }: Props) {
+export const Mixer = memo(function Mixer({ tracks, selectedTrack, meterRef, onSound, onSelect }: Props) {
   const anySolo = tracks.some((t) => t.solo);
   return (
     <div className="mixer" role="group" aria-label="Mixer">
@@ -75,27 +72,9 @@ export const Mixer = memo(function Mixer({ tracks, masterVolume, selectedTrack, 
               </div>
             </div>
             <output className="strip-db">{db(s.volume)}</output>
-            <div className="strip-ms">
-              <button className={`small ${t.mute ? 'on mute' : ''}`} aria-pressed={t.mute} title="Mute" onClick={() => onTrack(t.id, { mute: !t.mute })}>
-                M
-              </button>
-              <button className={`small ${t.solo ? 'on solo' : ''}`} aria-pressed={t.solo} title="Solo" onClick={() => onTrack(t.id, { solo: !t.solo })}>
-                S
-              </button>
-            </div>
           </div>
         );
       })}
-      <div className="strip master-strip" aria-label="Master">
-        <div className="strip-name">Master</div>
-        <div className="strip-fader">
-          <Fader label="Master level" value={masterVolume} max={1.5} onChange={onMaster} />
-          <div className="meter v strip-meter">
-            <div className="meter-fill" ref={masterMeterRef} />
-          </div>
-        </div>
-        <output className="strip-db">{db(masterVolume)}</output>
-      </div>
     </div>
   );
 });

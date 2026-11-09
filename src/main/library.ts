@@ -32,6 +32,7 @@ export function cleanSettings(raw: any): Settings {
     right: width(raw?.layout?.right),
     tool: oneOf(raw?.layout?.tool, TOOL_TABS),
     toolsOpen: typeof raw?.layout?.toolsOpen === 'boolean' ? raw.layout.toolsOpen : undefined,
+    samples: typeof raw?.layout?.samples === 'boolean' ? raw.layout.samples : undefined,
     lane: oneOf(raw?.layout?.lane, STEP_LANES),
   };
   const text = (v: unknown, max = 300) => (typeof v === 'string' && v.length <= max ? v : undefined);

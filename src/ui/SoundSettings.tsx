@@ -81,15 +81,7 @@ export function SoundSettings({ sound, outputs, activeOutput, midi, lastNote, on
         )}
       </section>
 
-      <section>
-        <h3>Playing and recording</h3>
-        <label className="check">
-          <input type="checkbox" checked={sound.quantise ?? true} onChange={(e) => onChange({ quantise: e.target.checked })} /> Snap recorded hits to the nearest step
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={sound.padKeys ?? false} onChange={(e) => onChange({ padKeys: e.target.checked })} /> Keys play the pads (Z X C V … unless you choose others in Pads → Set keys and notes)
-        </label>
-      </section>
+      <p className="hint">Snapping recorded hits and playing pads from the keyboard are set on the Pads tab.</p>
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { isAcoustic, kitLabel } from '../model/kits';
 import { SAMPLE_ACCEPT, sampleName } from '../model/audioFiles';
 
 interface Props {
+  /** Folds the list away to a narrow strip. */
+  onHide: () => void;
   project: Project;
   selectedSampleId: string | null;
   status: (id: string) => SampleStatus | undefined;
@@ -118,6 +120,12 @@ export function SampleBrowser(props: Props) {
         if (e.dataTransfer.files.length) onImport([...e.dataTransfer.files]);
       }}
     >
+      <div className="browser-title">
+        <h3>Sounds</h3>
+        <button className="small" onClick={props.onHide} title="Fold the sample list away. Open it again with Sounds, or Change on the sound panel.">
+          Hide
+        </button>
+      </div>
       <label className="kit-pick">
         Kit
         <select

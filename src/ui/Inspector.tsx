@@ -1,6 +1,6 @@
 import type { Step, Track, TrackSound } from '../model/types';
 import { FILTER_TYPES, RELEASE_FULL, SYNTH_WAVES, VOWELS } from '../model/types';
-import { Knob, Slider, db, hz, logFreq, pct, sec } from './controls';
+import { Knob, Slider, hz, logFreq, pct, sec } from './controls';
 import { defaultSound } from '../model/defaults';
 
 const d = defaultSound(null);
@@ -18,9 +18,13 @@ interface Props {
   onSound: (patch: Partial<TrackSound>, mergeKey?: string) => void;
   onRename: (name: string) => void;
   onAudition: () => void;
+  /** Opens the Mixer, where level, pan and the effect sends are. */
+  onMixer: () => void;
+  /** Shows the sample list, to pick another sample. */
+  onPickSample: () => void;
 }
 
-export function Inspector({ track, trackIndex, step, stepIndex, laneLength, sampleName, sampleBuffer, onStep, onSound, onRename, onAudition }: Props) {
+export function Inspector({ track, trackIndex, step, stepIndex, laneLength, sampleName, sampleBuffer, onStep, onSound, onRename, onAudition, onMixer, onPickSample }: Props) {
   const s = track.sound;
   return (
     <div className="inspector">
@@ -33,33 +37,10 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
             {stepIndex >= laneLength ? ' · outside lane length' : ''}
           </span>
         </h3>
-        <label className="check">
-          <input type="checkbox" checked={step.on} onChange={(e) => onStep({ on: e.target.checked })} /> On
-        </label>
         <label className="check" title="Locked steps are kept when generating (L)">
           <input type="checkbox" checked={step.locked} onChange={(e) => onStep({ locked: e.target.checked })} /> Locked
         </label>
-        <Slider label="Velocity" value={step.velocity} min={0} max={1} format={pct} onChange={(v, k) => onStep({ velocity: v }, k)} />
-        <Slider
-          label="Probability"
-          value={step.probability}
-          min={0}
-          max={1}
-          format={pct}
-          title="Chance that this step plays on each pass. Seeded by the project seed, so it is reproducible."
-          onChange={(v, k) => onStep({ probability: v }, k)}
-        />
-        <Slider
-          label="Microtiming"
-          value={step.micro}
-          min={-0.5}
-          max={0.5}
-          step={0.01}
-          format={(v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}% step`}
-          title="Push the hit early or late by up to half a step"
-          onChange={(v, k) => onStep({ micro: v }, k)}
-        />
-        <Slider label="Ratchet" value={step.ratchet} min={1} max={8} step={1} format={(v) => `${v}×`} onChange={(v, k) => onStep({ ratchet: v }, k)} />
+        <Slider label="Ratchet" value={step.ratchet} min={1} max={8} step={1} format={(v) => `${v}×`} title="Play the step this many times, evenly spread" onChange={(v, k) => onStep({ ratchet: v }, k)} />
       </section>
 
       <section className="panel-section" aria-label="Track sound">
@@ -80,6 +61,9 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
           <>
             <div className="sample-line" title="Drag a sample from the browser or drop a sound file (WAV, MP3, FLAC, OGG) on the track to change it">
               Sample: <strong>{sampleName}</strong>
+              <button className="small link" onClick={onPickSample} title="Show the sample list to choose another sample">
+                Change
+              </button>
             </div>
             <Waveform buffer={sampleBuffer} start={s.start} end={s.end} label={`Waveform of ${sampleName}`} />
             <label className="check" title="Play the sample backwards">
@@ -93,8 +77,6 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
           </div>
         )}
         <div className="sound-grid">
-          <Knob reset={d.volume} label="Volume" value={s.volume} min={0} max={1.5} format={db} onChange={(v, k) => onSound({ volume: v }, k)} />
-          <Knob reset={d.pan} label="Pan" value={s.pan} min={-1} max={1} format={(v) => (Math.abs(v) < 0.01 ? 'C' : v < 0 ? `L${Math.round(-v * 100)}` : `R${Math.round(v * 100)}`)} onChange={(v, k) => onSound({ pan: v }, k)} />
           <Knob reset={d.pitch} label="Pitch" value={s.pitch} min={-24} max={24} step={1} format={(v) => `${v > 0 ? '+' : ''}${v} st`} onChange={(v, k) => onSound({ pitch: v }, k)} />
           {s.source === 'sample' && (
             <>
@@ -158,11 +140,9 @@ export function Inspector({ track, trackIndex, step, stepIndex, laneLength, samp
           <Knob reset={d.phaserDepth} label="Phaser depth" value={s.phaserDepth} min={0} max={1} format={pct} onChange={(v, k) => onSound({ phaserDepth: v }, k)} />
         </div>
 
-        <h4 className="sub-head">Sends</h4>
-        <div className="sound-grid">
-          <Knob reset={d.delaySend} label="Delay send" value={s.delaySend} min={0} max={1} format={pct} onChange={(v, k) => onSound({ delaySend: v }, k)} />
-          <Knob reset={d.reverbSend} label="Reverb send" value={s.reverbSend} min={0} max={1} format={pct} onChange={(v, k) => onSound({ reverbSend: v }, k)} />
-        </div>
+        <button className="small link to-mixer" onClick={onMixer} title="Level, pan, reverb and delay for every track are in the Mixer">
+          Level, pan and effects are in the Mixer
+        </button>
       </section>
     </div>
   );
