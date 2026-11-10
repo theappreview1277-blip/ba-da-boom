@@ -1317,7 +1317,7 @@ export function App() {
                 onSet={(stepIndex, patch, gesture) => edit((p) => setStep(p, p.currentPatternId, track.id, stepIndex, patch), gesture)}
               />
             </div>
-            <div className={`tools ${toolsOpen ? 'open' : ''}`}>
+            <div className={`tools ${toolsOpen ? 'open' : ''} ${toolsOpen && tool === 'mixer' ? 'mixing' : ''}`}>
               <div className="tools-tabs" role="tablist" aria-label="Tools">
                 {TOOLS.map((t) => (
                   <button

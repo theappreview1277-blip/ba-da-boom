@@ -1658,8 +1658,8 @@ button.link {
   padding-bottom: 4px;
 }
 .strip {
-  flex: 1 0 58px;
-  max-width: 92px;
+  flex: 1 0 76px;
+  max-width: 104px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1691,23 +1691,53 @@ button.link {
 }
 .strip .knob-dial,
 .strip .knob-dial svg {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
 }
 .strip .slider.knob label,
 .strip .slider.knob output {
   font-size: 10px;
 }
-.strip-sends {
+/* Pan and the two sends side by side, so the strip is short enough to fit
+   the tool panel on small screens; the fader takes the height that is left. */
+.strip-knobs {
   display: flex;
   gap: 0;
+  justify-content: center;
+  width: 100%;
+}
+.strip-knobs .slider.knob {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .strip-fader {
   display: flex;
   align-items: stretch;
   gap: 4px;
-  height: 84px;
+  flex: 1 1 0;
+  min-height: 40px;
+  max-height: 160px;
   margin-top: 2px;
+}
+/* With the Mixer open the panel has a set height (as tall as it may be, up to
+   300 px), and the strips fill it. */
+.tools.mixing {
+  height: min(46%, 300px);
+}
+.tools.mixing .tools-body {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+}
+.tools.mixing .tool-page:not([hidden]) {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tools.mixing .mixer {
+  flex: 1 1 0;
+  min-height: 0;
 }
 .fader {
   writing-mode: vertical-lr;

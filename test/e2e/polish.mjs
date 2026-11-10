@@ -62,6 +62,19 @@ export async function run(t) {
     await openTool(win, 'Mixer');
     const strips = await win.locator('.mixer .strip[data-strip]').count();
     t.check('the Mixer has a strip per track', strips === 16, strips);
+    const fits = [];
+    for (const [w, h] of [[1000, 640], [1366, 768], [1920, 1080]]) {
+      await app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setContentSize(w, h), [w, h]);
+      await sleep(400);
+      const r = await win.evaluate(() => {
+        const body = document.querySelector('.tools-body').getBoundingClientRect();
+        const cut = [...document.querySelectorAll('.mixer .strip-db')].filter((d) => d.getBoundingClientRect().bottom > body.bottom + 0.5).length;
+        const b = document.querySelector('.tools-body');
+        return { cut, over: b.scrollHeight - b.clientHeight };
+      });
+      if (r.cut || r.over > 0) fits.push(`${w}x${h}: ${r.cut} readouts cut, ${r.over}px too tall`);
+    }
+    t.check('the mixer strips fit the panel, dB readouts included (1000x640, 1366x768, 1920x1080)', fits.length === 0, fits.join('; ') || 'all fit');
     const fader = win.locator('.mixer .strip[data-strip="2"] input.fader');
     await fader.fill('0.5');
     t.check('a fader sets that track\'s level', Math.abs((await project()).tracks[2].sound.volume - 0.5) < 1e-9, (await project()).tracks[2].sound.volume);
