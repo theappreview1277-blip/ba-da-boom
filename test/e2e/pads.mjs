@@ -92,14 +92,21 @@ export async function run(t) {
     t.check('Record starts playing', await win.evaluate(() => window.__engine.isPlaying));
     t.check('the Record button shows it is recording', (await win.getAttribute('.pads .rec', 'aria-pressed')) === 'true');
     const expected = new Set();
+    const hits = [];
     for (let n = 0; n < 5; n++) {
       await sleep(330);
       const c = await hitPad(3, 0.1);
-      if (c != null) expected.add(((Math.round(c * 16) % 16) + 16) % 16);
+      if (c != null) {
+        expected.add(((Math.round(c * 16) % 16) + 16) % 16);
+        hits.push(c * 16);
+      }
     }
     await sleep(100);
     const got = await ons(3);
-    t.check('each hit is written on the nearest step', got.length === expected.size && got.every((s) => expected.has(s)), `${got.join(',')} (expected ${[...expected].join(',')})`);
+    // The test reads the position a moment before the app does, so a hit right
+    // on the middle between two steps (within 0.05 of a step) may go either way.
+    const nearHit = (s) => hits.some((h) => Math.abs(((h - s + 8) % 16 + 16) % 16 - 8) <= 0.55);
+    t.check('each hit is written on the nearest step', got.length === expected.size && got.every(nearHit), `${got.join(',')} (expected ${[...expected].join(',')}; hit at ${hits.map((h) => (((h % 16) + 16) % 16).toFixed(2)).join(',')})`);
     const vel = (await laneOf(3))[got[0]]?.velocity;
     t.check('a hit near the top of a pad records loud', vel > 0.9, vel);
     await blur();

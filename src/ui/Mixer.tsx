@@ -60,8 +60,8 @@ export const Mixer = memo(function Mixer({ tracks, selectedTrack, meterRef, onSo
             <div className="strip-name" title={t.name}>
               <span className="strip-num">{i + 1}</span> {t.name}
             </div>
-            <Knob label="Pan" value={s.pan} min={-1} max={1} format={panText} reset={0} onChange={(v, k) => onSound(t.id, { pan: v }, `mix:${k}`)} />
-            <div className="strip-sends">
+            <div className="strip-knobs">
+              <Knob label="Pan" value={s.pan} min={-1} max={1} format={panText} reset={0} onChange={(v, k) => onSound(t.id, { pan: v }, `mix:${k}`)} />
               <Knob label="Rev" title="Reverb send" value={s.reverbSend} min={0} max={1} format={pct} reset={0} onChange={(v, k) => onSound(t.id, { reverbSend: v }, `mix:${k}`)} />
               <Knob label="Dly" title="Delay send" value={s.delaySend} min={0} max={1} format={pct} reset={0} onChange={(v, k) => onSound(t.id, { delaySend: v }, `mix:${k}`)} />
             </div>
