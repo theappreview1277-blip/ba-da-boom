@@ -16,6 +16,9 @@ interface Props {
   onTest: () => void;
 }
 
+/** The MIDI input menu's value for "off"; no device is called this. */
+const OFF = '\u0000off';
+
 export function SoundSettings({ sound, outputs, activeOutput, midi, lastNote, onChange, onOutput, onTest }: Props) {
   const savedMissing = sound.output && !activeOutput;
   return (
@@ -39,7 +42,14 @@ export function SoundSettings({ sound, outputs, activeOutput, midi, lastNote, on
             Test sound
           </button>
         </div>
-        {savedMissing && <p className="warn">{sound.output!.label} is not connected, so the system default is playing. It is used again when you plug it back in.</p>}
+        {savedMissing && (
+          <p className="warn">
+            {sound.output!.label} is not connected, so the system default is playing. It is used again when you plug it back in.{' '}
+            <button className="small link forget-output" onClick={() => onOutput(null)} title="Stop waiting for this sound card and keep using the system default">
+              Forget it
+            </button>
+          </p>
+        )}
         <p className="hint">Exported WAV files are not affected.</p>
       </section>
 
@@ -52,7 +62,12 @@ export function SoundSettings({ sound, outputs, activeOutput, midi, lastNote, on
             <div className="settings-row">
               <label>
                 Input{' '}
-                <select aria-label="MIDI input" value={sound.midiInput ?? ''} onChange={(e) => onChange({ midiInput: e.target.value || undefined })}>
+                <select
+                  aria-label="MIDI input"
+                  value={sound.midiOff ? OFF : sound.midiInput ?? ''}
+                  onChange={(e) => onChange(e.target.value === OFF ? { midiOff: true } : { midiOff: false, midiInput: e.target.value })}
+                >
+                  <option value={OFF}>Off (no MIDI controller)</option>
                   <option value="">Every connected input</option>
                   {[...new Set([...midi.inputs, ...(sound.midiInput ? [sound.midiInput] : [])])].map((n) => (
                     <option key={n} value={n}>
@@ -71,7 +86,9 @@ export function SoundSettings({ sound, outputs, activeOutput, midi, lastNote, on
               </label>
             </div>
             <p className="hint midi-last" aria-live="polite">
-              {!midi.inputs.length
+              {sound.midiOff
+                ? 'MIDI is off. Ba-da-boom has let go of your controllers, so other programs can use them.'
+                : !midi.inputs.length
                 ? 'No MIDI controller connected. Plug one in and it is found straight away.'
                 : lastNote
                   ? `Last note: ${noteName(lastNote.note)} (${lastNote.note}) from ${lastNote.input}${lastNote.track ? ` played ${lastNote.track}` : ', which no pad uses'}`

@@ -46,8 +46,10 @@ export type MidiMap = (typeof MIDI_MAPS)[number];
 export interface SoundSettings {
   /** The sound card picked in Settings; unset means the system default. The name finds it again if its id changes. */
   output?: { id: string; label: string };
-  /** The MIDI input to listen to (its name); unset means every connected input. */
+  /** The MIDI input to listen to (its name); unset or empty means every connected input. */
   midiInput?: string;
+  /** MIDI turned off: no input is opened, so other programs can use the controllers. */
+  midiOff?: boolean;
   midiMap?: MidiMap;
   /** Letter keys play the pads (Z X C V … and A S D F …). */
   padKeys?: boolean;

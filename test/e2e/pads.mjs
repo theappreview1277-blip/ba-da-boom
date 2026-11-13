@@ -1,18 +1,31 @@
 // Playing live, through the real UI: the Pads tab, recording hits into the
 // pattern (snapped or with their timing), one undo per take, letter keys
 // playing pads, a MIDI controller (a stand-in for one, since test machines have
-// none), and choosing the sound card (stand-in sound cards), remembered after a restart.
+// none), choosing the sound card (stand-in sound cards), remembered after a restart,
+// and disconnecting: MIDI off closes every controller, a missing sound card can be forgotten.
 import { closeApp, launchApp, newProfile, openTool, runStandalone } from './lib.mjs';
 
 /** Stand-ins for MIDI and sound cards, installed before the app's own code runs. */
 const fakes = (outputs) => `(() => {
   const inputs = new Map();
   const access = { inputs, outputs: new Map(), sysexEnabled: false, onstatechange: null };
-  const input = (name) => ({ id: name, name, type: 'input', state: 'connected', onmidimessage: null });
+  // Like the real thing, giving an input a listener opens it; close() closes it.
+  const opened = new Set();
+  const input = (name) => {
+    let handler = null;
+    const it = { id: name, name, type: 'input', state: 'connected', connection: 'closed',
+      get onmidimessage() { return handler; },
+      set onmidimessage(f) { handler = f; if (f) { it.connection = 'open'; opened.add(name); } },
+      async close() { handler = null; it.connection = 'closed'; return it; } };
+    return it;
+  };
   inputs.set('Test Pads', input('Test Pads'));
   window.__fakeMidi = {
     send(name, bytes) { inputs.get(name)?.onmidimessage?.({ data: new Uint8Array(bytes) }); },
     plug(name) { inputs.set(name, input(name)); access.onstatechange?.({}); },
+    /** Inputs open now, and every input opened since the page loaded. */
+    open() { return [...inputs.values()].filter((i) => i.connection === 'open').map((i) => i.name); },
+    everOpened() { return [...opened]; },
   };
   navigator.requestMIDIAccess = async () => access;
   window.__fakeOutputs = ${JSON.stringify(outputs)};
@@ -265,7 +278,68 @@ export async function run(t) {
     t.check('"Back to the usual layout" forgets every choice', (await keyNote()).every(([k, n]) => k === undefined && n === undefined) && (await win.locator('.drum-pad[data-pad="2"] kbd').textContent()) === 'C');
     await win.keyboard.press('Escape');
     t.check('Escape ends choosing too', !(await win.isVisible('.assign-bar')));
+
+    // 8. Disconnecting: MIDI off lets go of every controller; a missing sound card can be forgotten.
+    await win.click('button.settings-btn');
+    t.check('with every input chosen, the controllers are open', (await win.evaluate(() => window.__fakeMidi.open())).includes('Test Pads'), JSON.stringify(await win.evaluate(() => window.__fakeMidi.open())));
+    await win.selectOption('select[aria-label="MIDI input"]', { label: 'Off (no MIDI controller)' });
+    await sleep(100);
+    t.check('MIDI "Off" closes every controller', (await win.evaluate(() => window.__fakeMidi.open())).length === 0, JSON.stringify(await win.evaluate(() => window.__fakeMidi.open())));
+    t.check('Settings says MIDI is off and other programs can use the controllers', (await win.textContent('.midi-last')).includes('MIDI is off'), await win.textContent('.midi-last'));
+    await win.click('.modal button:has-text("Close")');
+    await openTool(win, 'Pads');
+    t.check('the Pads tab shows MIDI off', (await win.textContent('.midi-status')) === 'MIDI off', await win.textContent('.midi-status'));
+    await win.evaluate(() => window.__fakeMidi.send('Test Pads', [0x99, 38, 127]));
+    const offPeak = await trackPeak(2);
+    t.check('with MIDI off, controller hits play nothing', offPeak < 0.01, offPeak.toFixed(3));
+    await win.evaluate(() => window.__fakeMidi.plug('Keyboard 3'));
+    await sleep(100);
+    t.check('a controller plugged in while MIDI is off is not opened', !(await win.evaluate(() => window.__fakeMidi.everOpened())).includes('Keyboard 3'));
+
+    // A sound card that was chosen and then unplugged can be forgotten.
+    await win.click('button.settings-btn');
+    await win.selectOption('select[aria-label="Sound output"]', 'hp-2');
+    await sleep(200);
+    await win.evaluate(() => {
+      window.__fakeOutputs = window.__fakeOutputs.filter((d) => d.deviceId !== 'hp-2');
+      navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
+    });
+    await sleep(300);
+    await win.click('.settings .forget-output');
+    await sleep(200);
+    t.check('"Forget it" drops an unplugged sound card', (await win.locator('.settings .warn').count()) === 0);
+    await win.evaluate(() => {
+      window.__fakeOutputs.push({ deviceId: 'hp-2', label: 'Headphones' });
+      navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
+    });
+    await sleep(300);
+    t.check('a forgotten sound card is not used again when plugged back in', (await win.evaluate(() => window.__sinkCalls.at(-1))) === '', await win.evaluate(() => window.__sinkCalls.join()));
+    await win.click('.modal button:has-text("Close")');
+    await sleep(600);
     t.check('no page errors', pageErrors.length === 0, pageErrors.join(' | ') || 'none');
+    await closeApp(app, win);
+
+    ({ app, win, pageErrors } = await launchApp(profile));
+    await withFakes(win, [SPEAKERS, PHONES]);
+    await sleep(300);
+    t.check('MIDI off is remembered, and no controller is opened at start-up', (await win.evaluate(() => window.__fakeMidi.everOpened())).length === 0, JSON.stringify(await win.evaluate(() => window.__fakeMidi.everOpened())));
+    t.check('the forgotten sound card stays forgotten', !(await win.evaluate(() => window.__sinkCalls.includes('hp-2'))), await win.evaluate(() => window.__sinkCalls.join()));
+    await win.click('button.settings-btn');
+    await win.selectOption('select[aria-label="MIDI input"]', { label: 'Every connected input' });
+    await sleep(100);
+    t.check('turning MIDI back on opens the controllers again', (await win.evaluate(() => window.__fakeMidi.open())).includes('Test Pads'));
+    await win.click('.modal button:has-text("Close")');
+    await openTool(win, 'Pads');
+    await win.evaluate(() => window.__fakeMidi.send('Test Pads', [0x99, 38, 127]));
+    const onPeak = await trackPeak(2);
+    t.check('and controller hits play again', onPeak > 0.01, onPeak.toFixed(3));
+    await sleep(600);
+    await closeApp(app, win);
+    ({ app, win, pageErrors } = await launchApp(profile));
+    await withFakes(win, [SPEAKERS, PHONES]);
+    await sleep(300);
+    t.check('"Every connected input" is remembered after one input was picked', (await win.evaluate(() => window.__fakeMidi.open())).includes('Test Pads'), JSON.stringify(await win.evaluate(() => window.__fakeMidi.open())));
+    t.check('no page errors after restarting', pageErrors.length === 0, pageErrors.join(' | ') || 'none');
   } finally {
     await closeApp(app, win);
   }

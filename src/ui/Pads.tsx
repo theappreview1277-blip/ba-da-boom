@@ -36,9 +36,11 @@ export const Pads = memo(function Pads({ tracks, recording, quantise, padKeys, k
   const midiText =
     midi.status === 'unavailable'
       ? 'MIDI is not available on this computer'
-      : midi.inputs.length
-        ? `MIDI: ${midi.inputs.join(', ')}`
-        : 'No MIDI controller connected';
+      : !midi.inputs.length
+        ? 'No MIDI controller connected'
+        : midi.listening.length
+          ? `MIDI: ${midi.listening.join(', ')}`
+          : 'MIDI off';
   return (
     <div className="pads">
       <div className="pads-head">

@@ -711,7 +711,7 @@ export function App() {
   }, [tool, toolsOpen]);
 
   const midiRef = useRef<Midi | null>(null);
-  const [midiState, setMidiState] = useState<MidiState>({ status: 'off', inputs: [] });
+  const [midiState, setMidiState] = useState<MidiState>({ status: 'off', inputs: [], listening: [] });
   const [lastNote, setLastNote] = useState<{ note: number; input: string; track: string | null } | null>(null);
   useEffect(() => {
     const midi = new Midi();
@@ -734,8 +734,9 @@ export function App() {
     void midi.start();
   }, []);
   useEffect(() => {
-    if (midiRef.current) midiRef.current.only = sound.midiInput ?? null;
-  }, [sound.midiInput]);
+    // Wait for the saved choice, so an input that is turned off is never opened.
+    if (soundLoaded) midiRef.current?.use(sound.midiInput || null, sound.midiOff ?? false);
+  }, [soundLoaded, sound.midiInput, sound.midiOff]);
   const onDropFiles = useCallback((id: string, files: File[]) => importFiles(files, id), [importFiles]);
 
   const audition = useCallback(
