@@ -41,6 +41,7 @@ export function cleanSettings(raw: any): Settings {
   s.sound = {
     output: text(o?.id) && text(o?.label) !== undefined ? { id: o.id, label: o.label } : undefined,
     midiInput: text(raw?.sound?.midiInput),
+    midiOff: flag(raw?.sound?.midiOff),
     midiMap: oneOf(raw?.sound?.midiMap, MIDI_MAPS),
     padKeys: flag(raw?.sound?.padKeys),
     quantise: flag(raw?.sound?.quantise),

@@ -640,6 +640,9 @@ export function App() {
       const t = p.tracks[index];
       const engine = engineRef.current;
       if (!t || !engine) return;
+      // Where the hit falls, read first: playing it and lighting the pad take time
+      // (a few ms on a busy machine), which would make a recorded hit late.
+      const cycle = engine.isPlaying ? engine.patternCycle() : null;
       engine.hit(trackControls(t, index, p), t.sound.source === 'synth' ? null : t.sound.sampleId ?? null, velocity).catch(() => {});
       const pad = padEls.current.get(index);
       if (pad) {
@@ -648,7 +651,6 @@ export function App() {
         pad.classList.add('hit');
       }
       if (!recordingRef.current || !engine.isPlaying) return;
-      const cycle = engine.patternCycle();
       const patternId = engine.audiblePatternId;
       if (cycle == null || !patternId) return;
       const len = currentLane(p, patternId, t.id).length;
@@ -711,7 +713,7 @@ export function App() {
   }, [tool, toolsOpen]);
 
   const midiRef = useRef<Midi | null>(null);
-  const [midiState, setMidiState] = useState<MidiState>({ status: 'off', inputs: [] });
+  const [midiState, setMidiState] = useState<MidiState>({ status: 'off', inputs: [], listening: [] });
   const [lastNote, setLastNote] = useState<{ note: number; input: string; track: string | null } | null>(null);
   useEffect(() => {
     const midi = new Midi();
@@ -734,8 +736,9 @@ export function App() {
     void midi.start();
   }, []);
   useEffect(() => {
-    if (midiRef.current) midiRef.current.only = sound.midiInput ?? null;
-  }, [sound.midiInput]);
+    // Wait for the saved choice, so an input that is turned off is never opened.
+    if (soundLoaded) midiRef.current?.use(sound.midiInput || null, sound.midiOff ?? false);
+  }, [soundLoaded, sound.midiInput, sound.midiOff]);
   const onDropFiles = useCallback((id: string, files: File[]) => importFiles(files, id), [importFiles]);
 
   const audition = useCallback(

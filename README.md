@@ -37,6 +37,8 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
 * Offline WAV export (24-bit, 44.1 kHz) with effect tails, of a pattern or the whole song
 * Stem export (one 24-bit WAV per audible track, all the same length) and MIDI export
   (Standard MIDI File, General MIDI drum notes on channel 10)
+* Settings: sound card choice, MIDI controller input (every input, one input, or Off, which closes
+  every controller so other programs can use them), and forgetting a sound card that was unplugged
 * Euclidean rhythms, seeded randomise with step locks, variations, song mode,
   performance view, waveform preview of the selected track's sample
 * Beat intelligence: 54 drum patterns in 16 kinds of music (drum & bass two-step, double kick, halftime,
