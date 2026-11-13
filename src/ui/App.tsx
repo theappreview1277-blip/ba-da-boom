@@ -640,6 +640,9 @@ export function App() {
       const t = p.tracks[index];
       const engine = engineRef.current;
       if (!t || !engine) return;
+      // Where the hit falls, read first: playing it and lighting the pad take time
+      // (a few ms on a busy machine), which would make a recorded hit late.
+      const cycle = engine.isPlaying ? engine.patternCycle() : null;
       engine.hit(trackControls(t, index, p), t.sound.source === 'synth' ? null : t.sound.sampleId ?? null, velocity).catch(() => {});
       const pad = padEls.current.get(index);
       if (pad) {
@@ -648,7 +651,6 @@ export function App() {
         pad.classList.add('hit');
       }
       if (!recordingRef.current || !engine.isPlaying) return;
-      const cycle = engine.patternCycle();
       const patternId = engine.audiblePatternId;
       if (cycle == null || !patternId) return;
       const len = currentLane(p, patternId, t.id).length;
