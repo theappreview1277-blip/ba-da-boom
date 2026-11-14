@@ -43,6 +43,23 @@ describe('named beat library', () => {
     expect(classicById('amen').variants.length).toBeGreaterThanOrEqual(5);
   });
 
+  it('has the second batch of beats across more kinds of music', () => {
+    const ids = CLASSICS.map((c) => c.id);
+    for (const id of ['jazz-swing', 'second-line', 'gospel', 'new-jack', 'rnb-90s', 'crunk', 'bounce', 'phonk', 'jersey-club', 'footwork', 'trip-hop', 'synthwave', 'hardstyle', 'gabber', 'moombahton', 'mambo', 'chacha', 'soca', 'merengue', 'cumbia', 'tango', 'bolero', 'highlife', 'bhangra', 'maqsum', 'pop', 'surf', 'country']) {
+      expect(ids).toContain(id);
+    }
+    expect(CATEGORIES).toContain('Jazz');
+    expect(CLASSICS.length).toBeGreaterThanOrEqual(75);
+    expect(VARIANT_COUNT).toBeGreaterThanOrEqual(230);
+    // No beat is listed twice under another name.
+    const names = CLASSICS.map((c) => c.name.toLowerCase());
+    expect(new Set(names).size).toBe(names.length);
+    // Baladi: doum doum . tek doum . tek .
+    const baladi = classicById('maqsum').variants.find((v) => v.name === 'Baladi')!;
+    expect(baladi.parts.tomlow).toBe('X.X.....X.......');
+    expect(baladi.parts.rim).toBe('......x.....x...');
+  });
+
   it('every beat and variant is well formed', () => {
     expect(new Set(CLASSICS.map((c) => c.id)).size).toBe(CLASSICS.length);
     expect(new Set(CLASSICS.map((c) => c.short)).size).toBe(CLASSICS.length);
