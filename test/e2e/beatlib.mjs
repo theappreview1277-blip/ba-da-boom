@@ -127,8 +127,22 @@ export async function run(t) {
     p = await cur();
     const tomRim = Object.values(p.lanes).map((l) => l.steps.slice(0, l.length).map((s) => (s.on ? 'x' : '.')).join(''));
     t.check('Baladi writes doum (D D . T D . T .) and tek', tomRim.includes('x.x.....x.......') && tomRim.includes('......x.....x...'), tomRim.filter((g) => g.includes('x')).join(' / '));
+    // The Pocket Operations book: its own kind, found by a pattern name.
+    t.check('there is a Pocket Operations kind', kindsNow.includes('Pocket Operations'), kindsNow.join(', '));
+    await win.fill(`${lib} input[aria-label="Find a beat"]`, 'cissy');
+    await sleep(100);
+    const cissy = await win.locator(`${lib} select[aria-label="Beat"] option`).allTextContents();
+    t.check('typing "cissy" finds the book\'s funk and soul patterns', cissy.includes('Funk and soul (Pocket Operations)'), cissy.join(', '));
+    await pick('Beat', 'po-funk-and-soul');
+    const poVars = await win.locator(`${lib} select[aria-label="Variant"] option`).allTextContents();
+    const ci = poVars.findIndex((v) => v.replace(/^\d+\.\s*/, '') === 'Cissy Strut - A');
+    t.check('Cissy Strut - A is one of its variants', ci >= 0, `${poVars.length} variants`);
+    await pick('Variant', String(ci));
+    await button('Load beat');
+    await sleep(150);
+    p = await cur();
+    t.check('it writes the book\'s kick and snare cell for cell', p.kick === 'x..x.x...x.xx.x.' && p.snare === '....x..x.xx.....', `${p.kick} / ${p.snare}`);
     await win.fill(`${lib} input[aria-label="Find a beat"]`, '');
-
 
     // Add every variant as patterns, while playing.
     await win.fill(`${lib} input[aria-label="Find a beat"]`, 'funky drummer');
@@ -149,7 +163,7 @@ export async function run(t) {
     t.check('no errors in the page so far', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | ') || 'none');
 
     // Several minutes of playback, changing beats and variants like a person would.
-    const plan = ['amen', 'jazz-swing', 'funky-drummer', 'soca', 'apache', 'gospel', 'think', 'maqsum', 'soul-pride', 'hardstyle', 'boom-bap', 'purdie', 'trap', 'two-step', 'metal', 'dembow', 'house', 'jungle', 'levee', 'clave'];
+    const plan = ['amen', 'po-funk-and-soul', 'jazz-swing', 'funky-drummer', 'soca', 'apache', 'gospel', 'think', 'maqsum', 'soul-pride', 'hardstyle', 'boom-bap', 'purdie', 'trap', 'two-step', 'metal', 'dembow', 'house', 'jungle', 'levee', 'clave'];
     await win.fill(`${lib} input[aria-label="Find a beat"]`, '');
     await space();
     const t0 = Date.now();

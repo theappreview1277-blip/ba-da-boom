@@ -1,4 +1,5 @@
 import type { Role } from './rhythm';
+import { POCKET_OPS } from './pocketOps';
 
 // The named beat library: well-known drum patterns, each with named variants,
 // written by hand as step patterns that the app plays with its own kits. No
@@ -1297,6 +1298,9 @@ export const CLASSICS: Classic[] = [
       { name: 'Country rock', bpm: 124, parts: { kick: 'X.......X.x.....', snare: BB, hat: H8, shaker: H16 } },
     ],
   },
+
+  // ===================== Pocket Operations (pattern book) =====================
+  ...POCKET_OPS,
 ];
 
 export const CATEGORIES: string[] = [...new Set(CLASSICS.map((c) => c.category))];

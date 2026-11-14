@@ -60,6 +60,28 @@ describe('named beat library', () => {
     expect(baladi.parts.rim).toBe('......x.....x...');
   });
 
+  it('has the Pocket Operations book patterns, transcribed cell for cell', () => {
+    const po = CLASSICS.filter((c) => c.category === 'Pocket Operations');
+    expect(po.length).toBe(21);
+    expect(po.reduce((n, c) => n + c.variants.length, 0)).toBeGreaterThanOrEqual(320);
+    const find = (beat: string, variant: string) => classicById(beat).variants.find((v) => v.name === variant)!;
+    // Cissy Strut - A: BD 1 4 6 10 12 13 15, SN 5 8 10 11, CY 13 15 (a crash for the two hits).
+    expect(find('po-funk-and-soul', 'Cissy Strut - A').parts).toEqual({ kick: 'x..x.x...x.xx.x.', snare: '....x..x.xx.....', crash: '............x.x.' });
+    // Polyrhythmic - A: accents on 5, 9 and 13 and a two-hit ratchet on snare step 8.
+    expect(find('po-breaks', 'Polyrhythmic - A').parts.snare).toBe('..x.X..rX.xxX.xx');
+    // A and B parts are also chained into one longer variant.
+    const fd = find('po-funk-and-soul', 'Cissy Strut (A–D, 4 bars)');
+    expect(fd.parts.kick!.length).toBe(64);
+    expect(find('po-hip-hop', 'Trap - A').bpm).toBe(140);
+    // Nothing here repeats a beat that was already in the library.
+    const onOff = (parts: Record<string, string | undefined>) => {
+      const len = Math.max(...Object.values(parts).map((s) => s!.length));
+      return JSON.stringify(Object.entries(parts).map(([r, s]) => [r, s!.repeat(len / s!.length).replace(/[^.]/g, 'x')]).sort());
+    };
+    const others = new Set(CLASSICS.filter((c) => c.category !== 'Pocket Operations').flatMap((c) => c.variants.map((v) => onOff(v.parts))));
+    for (const c of po) for (const v of c.variants) expect(others.has(onOff(v.parts)), `${c.id} / ${v.name}`).toBe(false);
+  });
+
   it('every beat and variant is well formed', () => {
     expect(new Set(CLASSICS.map((c) => c.id)).size).toBe(CLASSICS.length);
     expect(new Set(CLASSICS.map((c) => c.short)).size).toBe(CLASSICS.length);
