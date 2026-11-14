@@ -38,7 +38,7 @@ export async function run(t) {
     t.check('the beat library is on screen', await win.isVisible(lib));
     const head = await win.textContent(`${lib} h3`);
     const [, beats, variants] = head.match(/(\d+) named beats, (\d+) variants/) ?? [];
-    t.check('it lists at least 40 named beats and 120 variants', Number(beats) >= 40 && Number(variants) >= 120, head);
+    t.check('it lists at least 70 named beats and 220 variants', Number(beats) >= 70 && Number(variants) >= 220, head);
 
     // Find the Amen by typing its name.
     await win.fill(`${lib} input[aria-label="Find a beat"]`, 'amen');
@@ -104,6 +104,46 @@ export async function run(t) {
     t.check('the Purdie shuffle writes triplet timing', Math.abs(p.lanes.t6.steps[3].micro + 0.33) < 0.01, p.lanes.t6.steps[3].micro);
     await win.check(`${lib} .check input`);
 
+    // The second batch of beats: a Jazz kind, and world rhythms on toms and rim.
+    const kindsNow = await win.locator(`${lib} select[aria-label="Kind"] option`).evaluateAll((os) => os.map((o) => o.value));
+    t.check('there is a Jazz kind', kindsNow.includes('Jazz'), kindsNow.join(', '));
+    await pick('Kind', 'Jazz');
+    await pick('Beat', 'jazz-swing');
+    await button('Load beat');
+    await sleep(150);
+    p = await cur();
+    t.check('Jazz swing writes the spang-a-lang ride at 140 BPM', p.ride === 'x...x..xx...x..x' && p.bpm === 140, `${p.ride} ${p.bpm}`);
+    t.check('its skip notes sit on the triplet grid', Math.abs(p.lanes.t15.steps[7].micro + 0.33) < 0.01, p.lanes.t15.steps[7].micro);
+    await win.fill(`${lib} input[aria-label="Find a beat"]`, 'baladi');
+    await sleep(100);
+    const mid = await win.locator(`${lib} select[aria-label="Beat"] option`).allTextContents();
+    t.check('typing "baladi" finds the Middle Eastern rhythms', mid.includes('Middle Eastern rhythms'), mid.join(', '));
+    await pick('Beat', 'maqsum');
+    const midVars = await win.locator(`${lib} select[aria-label="Variant"] option`).allTextContents();
+    t.check('they include maqsum, baladi, saidi and malfuf', ['Maqsum', 'Baladi', 'Saidi', 'Malfuf'].every((n) => midVars.some((v) => v.replace(/^\d+\.\s*/, '').startsWith(n))), midVars.join(' | '));
+    await pick('Variant', '1');
+    await button('Load beat');
+    await sleep(150);
+    p = await cur();
+    const tomRim = Object.values(p.lanes).map((l) => l.steps.slice(0, l.length).map((s) => (s.on ? 'x' : '.')).join(''));
+    t.check('Baladi writes doum (D D . T D . T .) and tek', tomRim.includes('x.x.....x.......') && tomRim.includes('......x.....x...'), tomRim.filter((g) => g.includes('x')).join(' / '));
+    // The Pocket Operations book: its own kind, found by a pattern name.
+    t.check('there is a Pocket Operations kind', kindsNow.includes('Pocket Operations'), kindsNow.join(', '));
+    await win.fill(`${lib} input[aria-label="Find a beat"]`, 'cissy');
+    await sleep(100);
+    const cissy = await win.locator(`${lib} select[aria-label="Beat"] option`).allTextContents();
+    t.check('typing "cissy" finds the book\'s funk and soul patterns', cissy.includes('Funk and soul (Pocket Operations)'), cissy.join(', '));
+    await pick('Beat', 'po-funk-and-soul');
+    const poVars = await win.locator(`${lib} select[aria-label="Variant"] option`).allTextContents();
+    const ci = poVars.findIndex((v) => v.replace(/^\d+\.\s*/, '') === 'Cissy Strut - A');
+    t.check('Cissy Strut - A is one of its variants', ci >= 0, `${poVars.length} variants`);
+    await pick('Variant', String(ci));
+    await button('Load beat');
+    await sleep(150);
+    p = await cur();
+    t.check('it writes the book\'s kick and snare cell for cell', p.kick === 'x..x.x...x.xx.x.' && p.snare === '....x..x.xx.....', `${p.kick} / ${p.snare}`);
+    await win.fill(`${lib} input[aria-label="Find a beat"]`, '');
+
     // Add every variant as patterns, while playing.
     await win.fill(`${lib} input[aria-label="Find a beat"]`, 'funky drummer');
     await pick('Beat', 'funky-drummer');
@@ -123,7 +163,7 @@ export async function run(t) {
     t.check('no errors in the page so far', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | ') || 'none');
 
     // Several minutes of playback, changing beats and variants like a person would.
-    const plan = ['amen', 'funky-drummer', 'apache', 'think', 'soul-pride', 'boom-bap', 'purdie', 'trap', 'two-step', 'metal', 'dembow', 'house', 'jungle', 'levee', 'clave'];
+    const plan = ['amen', 'po-funk-and-soul', 'jazz-swing', 'funky-drummer', 'soca', 'apache', 'gospel', 'think', 'maqsum', 'soul-pride', 'hardstyle', 'boom-bap', 'purdie', 'trap', 'two-step', 'metal', 'dembow', 'house', 'jungle', 'levee', 'clave'];
     await win.fill(`${lib} input[aria-label="Find a beat"]`, '');
     await space();
     const t0 = Date.now();

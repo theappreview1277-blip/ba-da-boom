@@ -1,4 +1,5 @@
 import type { Role } from './rhythm';
+import { POCKET_OPS } from './pocketOps';
 
 // The named beat library: well-known drum patterns, each with named variants,
 // written by hand as step patterns that the app plays with its own kits. No
@@ -882,6 +883,424 @@ export const CLASSICS: Classic[] = [
       { name: 'Afro house', bpm: 122, parts: { kick: FOUR, conga: '..x..x.x..x..x.x', shaker: H16, rim: '...x......x.....' } },
     ],
   },
+  // ===================== More beats (2026-11) =====================
+  // A second batch of well-known grooves across more kinds of music, written
+  // by hand from standard drumming practice.
+
+  // --- Jazz ---
+  {
+    id: 'jazz-swing',
+    name: 'Jazz swing',
+    short: 'JazzSwing',
+    category: 'Jazz',
+    bpm: 140,
+    swing: 50,
+    about: 'The jazz time feel: "spang-a-lang" ride on the triplet grid, hi-hat foot on 2 and 4 and a feathered kick.',
+    variants: [
+      { name: 'Medium swing', parts: { ride: 'x...x..tx...x..t', hat: BB, kick: 'g...g...g...g...' } },
+      { name: 'With comping', parts: { ride: 'x...x..tx...x..t', hat: BB, kick: 'g...g...g...g...', snare: '.......t.q......' } },
+      { name: 'Two-feel', parts: { ride: 'x...x..tx...x..t', hat: BB, kick: 'x.......x.......' } },
+      { name: 'Up-tempo (200 BPM)', bpm: 200, swing: 58, parts: { ride: 'x...x.x.x...x.x.', hat: BB, kick: 'g.......g.......' } },
+      { name: 'Brushes ballad (70 BPM)', bpm: 70, parts: { snare: 'g..tX..tg..tX..t', hat: BB, kick: 'g.......g.......' } },
+      {
+        name: 'Trading fours fill (2 bars)',
+        parts: {
+          ride: b('x...x..tx...x..t', 'x...x..t........'),
+          hat: b(BB, BB),
+          kick: b('g...g...g...g...', 'g...g.......X...'),
+          snare: b(E, '........x..tx..t'),
+        },
+      },
+    ],
+  },
+
+  // --- Funk, soul and gospel ---
+  {
+    id: 'second-line',
+    name: 'Second line',
+    short: 'SecondLn',
+    category: 'Funk & soul',
+    bpm: 100,
+    swing: 56,
+    about: 'The New Orleans street-parade groove: a rolling, accented snare over a bass drum that pushes ahead of the beat.',
+    variants: [
+      { name: 'Street beat', parts: { kick: 'X.....x.X.......', snare: '..gX..gX.gX...X.' } },
+      { name: 'With cowbell', parts: { kick: 'X.....x.X.......', snare: '..gX..gX.gX...X.', cowbell: 'x..x..x...x.x...' } },
+      { name: 'On the kit', parts: { kick: 'X.....x.X.....x.', snare: 'g.gXg.gXggX.g.Xg', hat: '....x.......x...' } },
+      { name: 'Two-bar', parts: { kick: b('X.....x.X.......', 'X.....x...x..x..'), snare: b('..gX..gX.gX...X.', '..gX..gX.g.Xrr.X') } },
+    ],
+  },
+  {
+    id: 'gospel',
+    name: 'Gospel chops',
+    short: 'Gospel',
+    category: 'Funk & soul',
+    bpm: 96,
+    swing: 50,
+    about: 'Church and "shed" drumming: a heavy backbeat wrapped in ghost notes, shuffle feels and fast kick-snare runs.',
+    variants: [
+      { name: 'Shed backbeat', parts: { kick: 'X.....x...x..x..', snare: '....X.g.gg..X.gg', hat: H16 } },
+      { name: 'Gospel shuffle', parts: { kick: 'X......tX.......', snare: '.q..X..t.q..X..t', hat: 'x..tx..tx..tx..t' } },
+      { name: 'Chops run (2 bars)', parts: { kick: b('X.....x...x.....', 'XxxXxxXxxX......'), snare: b('....X.g.gg..X.gg', '.x..x..x..XrrRRR'), hat: b(H16, 'x...............'), crash: b(E, '..........X.....') } },
+    ],
+  },
+
+  // --- Hip-hop and R&B ---
+  {
+    id: 'new-jack',
+    name: 'New jack swing',
+    short: 'NewJack',
+    category: 'Hip-hop',
+    bpm: 108,
+    swing: 62,
+    about: 'Late-80s R&B meets hip-hop: hard swung 16ths, a busy kick and a snare and clap stacked on the backbeat.',
+    variants: [
+      { name: 'Classic', parts: { kick: 'X..x..x...x..x..', snare: BB, clap: BB, hat: H16 } },
+      { name: 'With rim', parts: { kick: 'X..x....X.x.....', snare: BB, rim: '..x.......x..x..', hat: H8 } },
+      { name: 'Two-bar', parts: { kick: b('X..x..x...x..x..', 'X..x....X.x...x.'), snare: b(BB, '....X.......X.x.'), clap: b(BB, BB), hat: b(H16, H16) } },
+    ],
+  },
+  {
+    id: 'rnb-90s',
+    name: '90s R&B',
+    short: 'R&B90s',
+    category: 'Hip-hop',
+    bpm: 88,
+    swing: 54,
+    about: 'Slow-jam R&B: a laid-back kick, rim and finger snaps on the backbeat, soft 16th hats.',
+    variants: [
+      { name: 'Slow jam', parts: { kick: 'X......x.x......', snare: BB, hat: H16 } },
+      { name: 'Rim and snaps', parts: { kick: 'X.....x..x.x....', rim: BB, clap: BB, hat: H8 } },
+      { name: 'With shaker', bpm: 84, parts: { kick: 'X......x..x..x..', snare: BB, shaker: H16, openhat: '......x.......x.' } },
+    ],
+  },
+  {
+    id: 'crunk',
+    name: 'Crunk',
+    short: 'Crunk',
+    category: 'Hip-hop',
+    bpm: 80,
+    swing: 50,
+    about: 'Southern party hip-hop: booming sparse kicks, big claps and snare rolls into the next bar.',
+    variants: [
+      { name: 'Classic', parts: { kick: 'X.....x...X.....', clap: BB, hat: H8 } },
+      { name: 'Snare rolls (2 bars)', parts: { kick: b('X.....x...X.....', 'X.....x.X.x.....'), clap: b(BB, BB), snare: b(E, '............rrRR'), hat: b(H8, H8) } },
+    ],
+  },
+  {
+    id: 'bounce',
+    name: 'Bounce',
+    short: 'Bounce',
+    category: 'Hip-hop',
+    bpm: 100,
+    swing: 50,
+    about: 'New Orleans bounce: a call-and-response party beat with a busy, syncopated kick and snare.',
+    variants: [
+      { name: 'Classic', parts: { kick: 'X..x..x...x..x..', snare: '....x..x..x.x...', hat: H16 } },
+      { name: 'With claps', parts: { kick: 'X..x..x...x..x..', snare: '....x..x..x.x...', clap: BB, hat: H8 } },
+    ],
+  },
+  {
+    id: 'phonk',
+    name: 'Memphis phonk',
+    short: 'Phonk',
+    category: 'Hip-hop',
+    bpm: 130,
+    swing: 50,
+    about: 'Memphis-rap-rooted phonk: half-time snare, rattling cowbell figures and rolling hats.',
+    variants: [
+      { name: 'Classic (2 bars)', parts: { kick: b('X.....x...x.....', 'X.x...x...x.....'), clap: b('........X.......', '........X.......'), cowbell: b('x..x..x.x..x..x.', 'x..x..x.x.x.x...'), hat: b(H8, 'x.x.x.x.x.x.xrx.') } },
+      { name: 'Drift (16th hats)', parts: { kick: 'X.....x...x..x..', clap: '........X.......', hat: H16, cowbell: 'x..x..x.x..x..x.' } },
+    ],
+  },
+
+  // --- Electronic ---
+  {
+    id: 'jersey-club',
+    name: 'Jersey club',
+    short: 'JerseyClb',
+    category: 'Electronic',
+    bpm: 140,
+    swing: 50,
+    about: 'Fast club music from New Jersey: the five-kick "bounce" figure with claps on the backbeat.',
+    variants: [
+      { name: 'Classic', parts: { kick: 'X...X...X.X.X...', clap: BB, hat: H8 } },
+      { name: 'Two-bar', parts: { kick: b('X...X...X.X.X...', 'X...X...X.X.X.x.'), clap: b(BB, '....X.......X.x.'), hat: b(H8, H8) } },
+    ],
+  },
+  {
+    id: 'footwork',
+    name: 'Footwork',
+    short: 'Footwork',
+    category: 'Electronic',
+    bpm: 160,
+    swing: 50,
+    about: 'Chicago footwork and juke: syncopated triplet-leaning kicks at 160 with sparse claps.',
+    variants: [
+      { name: 'Classic', parts: { kick: 'X..X..X...X..X..', clap: '....x.......x...', hat: 'x..x..x.x..x..x.' } },
+      { name: 'Triplet hats', parts: { kick: 'X..X..X...X..X..', clap: BB, hat: 'xu.txu.txu.txu.t' } },
+    ],
+  },
+  {
+    id: 'trip-hop',
+    name: 'Trip-hop',
+    short: 'TripHop',
+    category: 'Electronic',
+    bpm: 82,
+    swing: 54,
+    about: 'Bristol-style downtempo: slow, heavy breakbeats with a dusty, laid-back feel.',
+    variants: [
+      { name: 'Heavy', parts: { kick: 'X.......x.x.....', snare: BB, hat: H8 } },
+      { name: 'Dusty', parts: { kick: 'X......x..x..x..', snare: '....X..g....X...', hat: 'x.xgx.x.x.xgx.x.', shaker: H16 } },
+      { name: 'Ride and rim', bpm: 76, parts: { kick: 'X.........x.....', rim: BB, ride: H8 } },
+    ],
+  },
+  {
+    id: 'synthwave',
+    name: 'Synthwave',
+    short: 'Synthwave',
+    category: 'Electronic',
+    bpm: 110,
+    swing: 50,
+    about: '80s-inspired synthwave: big gated snares, steady kicks and tom runs.',
+    variants: [
+      { name: 'Gated snare', parts: { kick: 'X.......X.......', snare: BB, hat: H16 } },
+      { name: 'Four on the floor', parts: { kick: FOUR, snare: BB, hat: OFF } },
+      {
+        name: 'Tom run (2 bars)',
+        parts: {
+          kick: b(FOUR, FOUR),
+          snare: b(BB, '....X...........'),
+          hat: b(H8, 'x.x.x.x.........'),
+          tomhigh: b(E, '........xx......'),
+          tommid: b(E, '..........xx....'),
+          tomlow: b(E, '............xxxx'),
+        },
+      },
+    ],
+  },
+  {
+    id: 'hardstyle',
+    name: 'Hardstyle',
+    short: 'Hardstyle',
+    category: 'Electronic',
+    bpm: 150,
+    swing: 50,
+    about: 'Hard dance at 150: a distorted kick on every beat, claps on 2 and 4 and offbeat open hats.',
+    variants: [
+      { name: 'Kick and clap', parts: { kick: FOUR, clap: BB, openhat: OFF } },
+      { name: 'With 16th hats', parts: { kick: FOUR, clap: BB, hat: 'xx.xxx.xxx.xxx.x', openhat: OFF } },
+    ],
+  },
+  {
+    id: 'gabber',
+    name: 'Gabber',
+    short: 'Gabber',
+    category: 'Electronic',
+    bpm: 190,
+    swing: 50,
+    about: 'Rotterdam hardcore: a pounding kick at 190 with offbeat hats and kick rolls.',
+    variants: [
+      { name: 'Classic', parts: { kick: FOUR, openhat: OFF, clap: BB } },
+      { name: 'Kick rolls (2 bars)', parts: { kick: b(FOUR, 'X...X...X.x.XxxX'), openhat: b(OFF, OFF), clap: b(BB, BB) } },
+    ],
+  },
+  {
+    id: 'moombahton',
+    name: 'Moombahton',
+    short: 'Moombah',
+    category: 'Electronic',
+    bpm: 108,
+    swing: 50,
+    about: 'Dutch house slowed to reggaeton tempo: four kicks with the dembow snare and tribal percussion.',
+    variants: [
+      { name: 'Classic', parts: { kick: FOUR, snare: '...x..x....x..x.', clap: BB, hat: H8 } },
+      { name: 'Tribal', parts: { kick: FOUR, conga: '..x..x.x..x..x.x', rim: '...x..x....x..x.', shaker: H16 } },
+    ],
+  },
+
+  // --- Latin and world ---
+  {
+    id: 'mambo',
+    name: 'Mambo',
+    short: 'Mambo',
+    category: 'Latin & world',
+    bpm: 104,
+    swing: 50,
+    about: 'Afro-Cuban dance band rhythm: mambo bell and son clave over the conga tumbao, or the timbale cascara.',
+    variants: [
+      { name: 'Bell and clave 3-2', parts: { cowbell: b('X.x.X.x.X.xxX.x.', 'X.x.X.x.X.x.X.xx'), clave: b('X.....X.....X...', '....X...X.......'), conga: b('......xx......xx', '......xx......xx'), kick: b('......x.......x.', '......x.......x.') } },
+      { name: 'Cascara 3-2', parts: { rim: b('X...X.X...X...X.', 'X...X...X.X...X.'), clave: b('X.....X.....X...', '....X...X.......'), conga: b('......x.......xx', '......x.......xx') } },
+    ],
+  },
+  {
+    id: 'chacha',
+    name: 'Cha-cha-chá',
+    short: 'ChaCha',
+    category: 'Latin & world',
+    bpm: 120,
+    swing: 50,
+    about: 'The Cuban cha-cha-chá: cowbell on the beat, güiro scrape and the "cha-cha" conga on 4-and.',
+    variants: [
+      { name: 'Percussion', parts: { cowbell: 'X...X...X...X...', shaker: 'x...x.x.x...x.x.', conga: '......x.......xx' } },
+      { name: 'Kit version', parts: { kick: 'X.......X.......', rim: '....X.......X...', cowbell: Q4, tomlow: '............x.x.' } },
+    ],
+  },
+  {
+    id: 'soca',
+    name: 'Soca and calypso',
+    short: 'Soca',
+    category: 'Latin & world',
+    bpm: 120,
+    swing: 50,
+    about: 'Trinidad carnival rhythms: driving soca with a kick on every beat and offbeat snare, and the older, lighter calypso.',
+    variants: [
+      { name: 'Soca', parts: { kick: FOUR, snare: OFF, hat: H16, cowbell: 'x..x..x.x..x..x.' } },
+      { name: 'Power soca', bpm: 155, parts: { kick: FOUR, snare: '..x...x...x..xx.', hat: H8 } },
+      { name: 'Calypso', bpm: 105, parts: { kick: 'X..x....X..x....', snare: BB, hat: H8 } },
+    ],
+  },
+  {
+    id: 'merengue',
+    name: 'Merengue',
+    short: 'Merengue',
+    category: 'Latin & world',
+    bpm: 140,
+    swing: 50,
+    about: 'Dominican merengue: the güira scraping on every beat and the tambora\'s rolling two-headed pattern.',
+    variants: [
+      { name: 'Güira and tambora', parts: { shaker: 'X.xxX.xxX.xxX.xx', tomlow: 'X......xX.x.X.x.', rim: '....x.......x...' } },
+      { name: 'Kit version', parts: { kick: FOUR, rim: '..x...x...x...x.', shaker: 'X.xxX.xxX.xxX.xx', snare: '.......x.......x' } },
+    ],
+  },
+  {
+    id: 'cumbia',
+    name: 'Cumbia',
+    short: 'Cumbia',
+    category: 'Latin & world',
+    bpm: 95,
+    swing: 50,
+    about: 'Colombian cumbia: the guacharaca scrape, a two-beat kick and the conga on the offbeats.',
+    variants: [
+      { name: 'Classic', parts: { kick: 'X.......X.......', shaker: 'x.xxx.xxx.xxx.xx', conga: '..x...x...x...x.', rim: BB } },
+      { name: 'Sonidera', bpm: 90, parts: { kick: FOUR, shaker: 'x.xxx.xxx.xxx.xx', rim: '..x...x...x...x.', cowbell: '....x.......x...' } },
+    ],
+  },
+  {
+    id: 'tango',
+    name: 'Tango and habanera',
+    short: 'Tango',
+    category: 'Latin & world',
+    bpm: 116,
+    swing: 50,
+    about: 'Rioplatense and Cuban roots: the habanera figure (dotted 8th, 16th, two 8ths) and tango\'s marching four.',
+    variants: [
+      { name: 'Habanera', parts: { tomlow: 'X..xx.x.X..xx.x.', rim: BB } },
+      { name: 'Tango marcato', parts: { kick: 'X...X...X...X...', snare: '...x.......x....' } },
+      { name: 'Tango 3-3-2', parts: { kick: 'X..X..X.X..X..X.', rim: '......x.......x.' } },
+    ],
+  },
+  {
+    id: 'bolero',
+    name: 'Bolero',
+    short: 'Bolero',
+    category: 'Latin & world',
+    bpm: 84,
+    swing: 50,
+    about: 'Latin bolero: slow and romantic, with the bongó martillo, a rim backbeat and maracas.',
+    variants: [
+      { name: 'Classic', parts: { kick: 'X.......X.......', rim: '....x.......x...', shaker: H8, tomhigh: 'x.gxx.gxx.gxx.gx' } },
+      { name: 'With conga', parts: { kick: 'X.......X.......', rim: '....x..x....x...', conga: '......x.......xx', shaker: H8 } },
+    ],
+  },
+  {
+    id: 'highlife',
+    name: 'Highlife',
+    short: 'Highlife',
+    category: 'Latin & world',
+    bpm: 120,
+    swing: 50,
+    about: 'Ghanaian highlife: a bright bell pattern over a light kick and snare and shaker.',
+    variants: [
+      { name: 'Classic', parts: { cowbell: 'x.x..x.x.x.x..x.', kick: 'X.......X.......', snare: '......x.......x.', shaker: H16 } },
+      { name: 'With congas', parts: { cowbell: 'x.x..x.x.x.x..x.', kick: 'X.......X.......', conga: '..xx..x...xx..x.', shaker: H8 } },
+    ],
+  },
+  {
+    id: 'bhangra',
+    name: 'Bhangra',
+    short: 'Bhangra',
+    category: 'Latin & world',
+    bpm: 100,
+    swing: 50,
+    about: 'Punjabi bhangra: the dhol\'s bouncing "chaal" on the triplet grid, a bass hit and a sharp stick on top.',
+    variants: [
+      { name: 'Chaal', parts: { tomlow: 'X..tx..tX..tx..t', rim: '.u...u...u...u..' } },
+      { name: 'Kit version', parts: { kick: 'X..t...tX..t...t', snare: '....X.......X...', rim: '.u...u...u...u..', shaker: 'x..tx..tx..tx..t' } },
+    ],
+  },
+  {
+    id: 'maqsum',
+    name: 'Middle Eastern rhythms',
+    short: 'Maqsum',
+    category: 'Latin & world',
+    bpm: 100,
+    swing: 50,
+    about: 'Arabic dance rhythms on doum (low tom) and tek (rim): maqsum, baladi, saidi and malfuf.',
+    variants: [
+      { name: 'Maqsum', parts: { tomlow: 'X.......X.......', rim: '..x...x.....x...', shaker: 'gggggggggggggggg' } },
+      { name: 'Baladi', parts: { tomlow: 'X.X.....X.......', rim: '......x.....x...', shaker: 'gggggggggggggggg' } },
+      { name: 'Saidi', parts: { tomlow: 'X.....X.X.......', rim: '..x.........x...', shaker: 'gggggggggggggggg' } },
+      { name: 'Malfuf', bpm: 130, parts: { tomlow: 'X...............', rim: '......x.....x...' } },
+    ],
+  },
+
+  // --- Rock, pop and country ---
+  {
+    id: 'pop',
+    name: 'Pop',
+    short: 'Pop',
+    category: 'Rock & pop',
+    bpm: 100,
+    swing: 50,
+    about: 'Pop staples: the ballad, the dance-pop four-on-the-floor, half-time choruses and the stomp-clap beat.',
+    variants: [
+      { name: 'Ballad (72 BPM)', bpm: 72, parts: { kick: 'X.......X.x.....', rim: BB, hat: H8 } },
+      { name: 'Dance pop', bpm: 120, parts: { kick: FOUR, clap: BB, hat: OFF } },
+      { name: 'Half-time chorus', parts: { kick: 'X.....x...x.....', snare: '........X.......', hat: H16 } },
+      { name: 'Stomp and clap', bpm: 82, parts: { kick: 'X.X.....X.X.....', clap: BB } },
+    ],
+  },
+  {
+    id: 'surf',
+    name: 'Surf rock',
+    short: 'Surf',
+    category: 'Rock & pop',
+    bpm: 160,
+    swing: 50,
+    about: 'Early-60s surf: a fast, driving beat with rolling floor-tom 16ths.',
+    variants: [
+      { name: 'Tom groove', parts: { kick: 'X.......X.......', snare: BB, tomlow: 'x.xxx.xxx.xxx.xx' } },
+      { name: 'Kit version', parts: { kick: 'X.......X.x.....', snare: BB, ride: H8, crash: 'X...............' } },
+    ],
+  },
+  {
+    id: 'country',
+    name: 'Country',
+    short: 'Country',
+    category: 'Rock & pop',
+    bpm: 110,
+    swing: 50,
+    about: 'Country and bluegrass: the two-beat with cross-stick backbeats and the fast bluegrass offbeat snare.',
+    variants: [
+      { name: 'Two-beat', parts: { kick: 'X.......X.......', rim: BB, hat: H8 } },
+      { name: 'Bluegrass', bpm: 180, parts: { kick: 'X.......X.......', snare: OFF } },
+      { name: 'Country rock', bpm: 124, parts: { kick: 'X.......X.x.....', snare: BB, hat: H8, shaker: H16 } },
+    ],
+  },
+
+  // ===================== Pocket Operations (pattern book) =====================
+  ...POCKET_OPS,
 ];
 
 export const CATEGORIES: string[] = [...new Set(CLASSICS.map((c) => c.category))];
