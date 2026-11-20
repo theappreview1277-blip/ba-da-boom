@@ -48,6 +48,7 @@ const suites = [
   ['./beatlib.mjs', 'Beat library'],
   ['./patterns.mjs', 'Pattern list'],
   ['./song.mjs', 'Song mode'],
+  ['./track.mjs', 'Whole track (track beat intelligence)'],
   ['./kits.mjs', 'Tempo entry and kits'],
   ['./library.mjs', 'Sample folders, favourites and panels'],
   ['./formats.mjs', 'MP3, FLAC and OGG sounds'],

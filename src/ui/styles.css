@@ -87,6 +87,8 @@ select,
 .app {
   display: grid;
   grid-template-rows: auto auto auto 1fr auto;
+  /* One column no wider than the window, so long one-line lists scroll inside themselves. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -261,6 +263,19 @@ button.tb {
   border-color: var(--accent);
 }
 
+.pattern-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 120px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+.pattern-list > * {
+  flex: none;
+}
 .patternbar {
   display: flex;
   align-items: center;
@@ -1073,9 +1088,15 @@ button.tb {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   flex: 1;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+.song-entry {
+  flex: none;
 }
 .song-entry {
   display: flex;
@@ -1899,4 +1920,115 @@ button.link {
   margin: 14px 0 4px;
   white-space: normal;
   text-align: left;
+}
+
+/* --- whole track (track beat intelligence) --- */
+.kind-intro { --kind: #5b8def; }
+.kind-verse { --kind: #4fb3bf; }
+.kind-chorus { --kind: #f0a63a; }
+.kind-build { --kind: #e2685c; }
+.kind-break { --kind: #9b7be0; }
+.kind-outro { --kind: #6f7c8c; }
+.kind-own { --kind: #3a3f47; }
+.trackbuilder input[type='number'] {
+  width: 100%;
+}
+.trackbuilder .about {
+  font-size: 11px;
+  opacity: 0.7;
+  margin: 4px 0;
+  line-height: 1.3;
+}
+.trackbuilder .plan {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.trackbuilder .plan-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 2px;
+}
+.trackbuilder .plan-row select {
+  padding: 1px 2px;
+  min-width: 0;
+}
+.trackbuilder .plan-row select:first-of-type {
+  flex: 1;
+}
+.trackbuilder .plan-row .icon,
+.trackbuilder .plan-row .swatch {
+  flex: none;
+}
+.trackbuilder .swatch {
+  width: 8px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--kind);
+}
+.trackbuilder .plan-row .icon {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+.trackbuilder .plan-row .icon:disabled {
+  opacity: 0.3;
+}
+.trackbuilder .gen-buttons {
+  flex-wrap: wrap;
+}
+.trackbuilder .timeline {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.trackbuilder .tl-section {
+  flex-basis: 0;
+  min-width: 0;
+  height: 40px;
+  padding: 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--kind) 70%, var(--line));
+  background: color-mix(in srgb, var(--kind) 30%, var(--panel-2));
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+  text-align: left;
+}
+.trackbuilder .tl-section span {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.trackbuilder .tl-section small {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.trackbuilder .tl-section.playing {
+  background: color-mix(in srgb, var(--kind) 65%, var(--panel-2));
+  box-shadow: inset 0 -3px 0 var(--play);
+}
+.trackbuilder .retakes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-top: 6px;
+}
+.trackbuilder .retake {
+  border-left: 3px solid var(--kind);
+}
+.song-entry[class*='kind-']:not(.kind-own) {
+  border-left: 3px solid var(--kind);
 }

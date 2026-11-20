@@ -47,12 +47,14 @@ import { Generate } from './Generate';
 import { SmartBeats } from './SmartBeats';
 import { addClassicPatterns, addFillPattern, classicById, classicVariant, completeBeat, fillPattern, generateBeat, humanise, loadClassic, resolveFillType, styleById, FILL_TYPES } from '../model/rhythm';
 import { BeatLibrary } from './BeatLibrary';
+import { TrackBuilder } from './TrackBuilder';
+import { buildTrack, resolveForm, retakeSection, sectionName } from '../model/arrange';
 import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
 import { Splitter } from './Splitter';
 import { Perform } from './Perform';
 import { SongBar } from './SongBar';
-import { reorderProps } from './reorder';
+import { reorderProps, scrollIntoList } from './reorder';
 import { useUiStore } from './store';
 import { SAMPLE_FILE, sampleName } from '../model/audioFiles';
 import { toWav } from '../engine/audio/convert';
@@ -69,6 +71,7 @@ const AUTOSAVE_MS = 5000;
 const TOOLS: { id: ToolTab; label: string; title: string }[] = [
   { id: 'library', label: 'Beat library', title: 'Named classic beats and their variants' },
   { id: 'beats', label: 'Beat intelligence', title: 'Style generator, complete my beat, fills and humanise' },
+  { id: 'track', label: 'Whole track', title: 'Track beat intelligence: the drums for a whole track, with intro, verses, choruses, builds, breaks, fills and outro' },
   { id: 'generate', label: 'Generate', title: 'Euclidean rhythms, randomise and variations' },
   { id: 'pads', label: 'Pads', title: 'Drum pads to play and record live, with the mouse, the keyboard or a MIDI controller' },
   { id: 'mixer', label: 'Mixer', title: 'Every track side by side: level, pan, reverb and delay, mute and solo' },
@@ -102,6 +105,8 @@ export function App() {
   const [songMode, setSongModeState] = useState(false);
   const songModeRef = useRef(false);
   const [songIndex, setSongIndex] = useState(-1);
+  // Many patterns (a built track has around 15) stay on one line that scrolls; the current one is kept in view.
+  const patternListRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<'edit' | 'perform'>('edit');
   const positionEl = useRef<HTMLDivElement | null>(null);
   const positionRef = useCallback((el: HTMLDivElement | null) => void (positionEl.current = el), []);
@@ -195,6 +200,11 @@ export function App() {
   const pageRef = useRef({ ...page, follow });
   pageRef.current = { ...page, follow };
   useEffect(() => setPageIndex(0), [project.currentPatternId]);
+  useEffect(() => {
+    const list = patternListRef.current;
+    const el = list?.querySelector<HTMLElement>('.pattern-btn.current');
+    if (list && el) scrollIntoList(list, el);
+  }, [project.currentPatternId]);
   useEffect(() => {
     // Fewer pages after a lane got shorter or the window wider: stay on a page that exists.
     const pages = Math.ceil(page.total / page.steps);
@@ -1150,6 +1160,7 @@ export function App() {
       </header>
 
       <nav className="patternbar" aria-label="Patterns">
+        <div className="pattern-list" ref={patternListRef}>
         {project.patterns.map((pt, i) => renaming === pt.id ? (
           <input
             key={pt.id}
@@ -1189,6 +1200,7 @@ export function App() {
         >
           +
         </button>
+        </div>
         <span className="sep" />
         <button className="small" onClick={() => setRenaming(project.currentPatternId)} title="Give this pattern a name (F2, or double-click it)">Rename</button>
         <button className="small" onClick={() => edit((p) => duplicatePattern(p, p.currentPatternId))} title="Duplicate pattern (Ctrl+D)">Duplicate</button>
@@ -1406,6 +1418,39 @@ export function App() {
                     }}
                   />
                   )}</div>
+                  <div className="tool-page" hidden={tool !== 'track'}>
+                    <TrackBuilder
+                      project={project}
+                      pattern={pattern}
+                      playingIndex={playing && songMode ? songIndex : -1}
+                      onBuild={(opts) => {
+                        const { project: next, arrangement: a } = buildTrack(projectRef.current, opts);
+                        edit(() => next);
+                        setSongMode(true);
+                        const bars = a.song.reduce((n, e) => n + e.bars, 0);
+                        const secs = (bars * 240) / next.bpm;
+                        notify(`Track built: ${a.form.name}, ${a.sections.length} sections, ${bars} bars (${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, '0')}). Press Play.`);
+                      }}
+                      onRetake={(opts, kind) => {
+                        const { project: next, whole } = retakeSection(projectRef.current, opts, kind);
+                        edit(() => next);
+                        const name = sectionName(resolveForm(next, opts), kind);
+                        notify(whole ? `The track had changed, so it was built again with a new ${name.toLowerCase()}` : `New take of every ${name.toLowerCase()}; the rest of the track is as it was`);
+                      }}
+                      onShowEntry={(i) => {
+                        const e = projectRef.current.song[i];
+                        if (e) dispatch({ type: 'transient', fn: (p) => ({ ...p, currentPatternId: e.patternId }) });
+                      }}
+                      onPlay={async () => {
+                        const engine = engineRef.current;
+                        if (!engine || !engineReady) return;
+                        if (engine.isPlaying) await engine.stop();
+                        setSongMode(true);
+                        await engine.play();
+                        setPlaying(engine.isPlaying);
+                      }}
+                    />
+                  </div>
                   <div className="tool-page" hidden={tool !== 'generate'}>{(
                   <Generate
                     trackIndex={trackIndex}
