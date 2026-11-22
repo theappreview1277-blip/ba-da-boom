@@ -45,3 +45,11 @@ export function reorderProps(type: string, index: number, onMove: (from: number,
     },
   };
 }
+
+/** Scroll a one-line list sideways so `el` is in view. Only the list moves (scrollIntoView can move the whole window). */
+export function scrollIntoList(list: HTMLElement, el: HTMLElement) {
+  const l = list.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  if (r.left < l.left) list.scrollLeft -= l.left - r.left + 8;
+  else if (r.right > l.right) list.scrollLeft += r.right - l.right + 8;
+}

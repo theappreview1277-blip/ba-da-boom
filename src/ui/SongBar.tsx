@@ -1,6 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { songBars } from '../model/ops';
+import { arrangedKind } from '../model/arrange';
 import { MAX_SONG_BARS, type Project } from '../model/types';
-import { reorderProps } from './reorder';
+import { reorderProps, scrollIntoList } from './reorder';
 
 const BAR_CHOICES = [1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 24, 32, 48, MAX_SONG_BARS];
 const barChoices = (current: number) => (BAR_CHOICES.includes(current) ? BAR_CHOICES : [...BAR_CHOICES, current].sort((a, b) => a - b));
@@ -24,6 +26,13 @@ const duration = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math
 /** The song arrangement: patterns in order, each for a number of bars. */
 export function SongBar({ project, songMode, playingIndex, onMode, onAdd, onRemove, onMove, onBars, onLoop, onSelect }: Props) {
   const names = new Map(project.patterns.map((p) => [p.id, p.name]));
+  // A long song stays on one line that scrolls; the block being heard is kept in view.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (playingIndex < 0) return;
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-song-index="${playingIndex}"]`);
+    if (el && listRef.current) scrollIntoList(listRef.current, el);
+  }, [playingIndex]);
   const total = songBars(project);
   const current = names.get(project.currentPatternId);
   return (
@@ -42,10 +51,10 @@ export function SongBar({ project, songMode, playingIndex, onMode, onAdd, onRemo
           Song
         </button>
       </div>
-      <div className="song-entries">
+      <div className="song-entries" ref={listRef}>
         {project.song.length === 0 && <span className="hint">Song is empty. Add patterns in the order they should play.</span>}
         {project.song.map((e, i) => (
-          <div key={i} className={`song-entry ${i === playingIndex ? 'playing' : ''}`} data-song-index={i} title="Drag to reorder" {...reorderProps('application/x-bdb-song', i, onMove)}>
+          <div key={i} className={`song-entry kind-${arrangedKind(e.patternId) ?? 'own'} ${i === playingIndex ? 'playing' : ''}`} data-song-index={i} title="Drag to reorder" {...reorderProps('application/x-bdb-song', i, onMove)}>
             <button className="name" onClick={() => onSelect(e.patternId)} title="Show this pattern">
               {names.get(e.patternId)}
             </button>
@@ -73,10 +82,10 @@ export function SongBar({ project, songMode, playingIndex, onMode, onAdd, onRemo
             </button>
           </div>
         ))}
-        <button className="small add" onClick={onAdd} title="Add the current pattern to the end of the song">
-          + {current}
-        </button>
       </div>
+      <button className="small add" onClick={onAdd} title="Add the current pattern to the end of the song">
+        + {current}
+      </button>
       <label className="check">
         <input type="checkbox" checked={project.songLoop} onChange={(e) => onLoop(e.target.checked)} /> Loop
       </label>
