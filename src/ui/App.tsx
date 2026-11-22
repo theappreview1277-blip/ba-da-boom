@@ -45,6 +45,7 @@ import { useShortcuts } from './useShortcuts';
 import { TopBar } from './TopBar';
 import { PatternBar } from './PatternBar';
 import { ToolPanel } from './ToolPanel';
+import { playModel } from '../plugin/playModel';
 import { AboutDialog, Dialog, ExportDialog, KeysDialog, RecoverDialog, RemovePatternDialog, UnsavedDialog, WelcomeDialog, type ExportPrefs, type Modal } from './Dialogs';
 
 /** Width of the sample list when folded away. */
@@ -126,7 +127,7 @@ export function App() {
         desktop.log('error', `Audio engine failed to start: ${e?.stack ?? e}`).catch(() => {});
       });
     // For automated tests and diagnostics.
-    Object.assign(window as any, { __engine: engine, __bdb: { renderPattern, encodeWav24, parseProject, serializeProject } });
+    Object.assign(window as any, { __engine: engine, __bdb: { renderPattern, encodeWav24, parseProject, serializeProject, playModel } });
   }, [fail]);
 
   useEffect(() => {
