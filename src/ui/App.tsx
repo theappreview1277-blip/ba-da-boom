@@ -48,6 +48,8 @@ import { SmartBeats } from './SmartBeats';
 import { addClassicPatterns, addFillPattern, classicById, classicVariant, completeBeat, fillPattern, generateBeat, humanise, loadClassic, resolveFillType, styleById, FILL_TYPES } from '../model/rhythm';
 import { BeatLibrary } from './BeatLibrary';
 import { TrackBuilder } from './TrackBuilder';
+import { KeyboardMap } from './KeyboardMap';
+import { TAP_RESET_MS, tapTempo } from '../model/tempo';
 import { buildTrack, resolveForm, retakeSection, sectionName } from '../model/arrange';
 import { Inspector } from './Inspector';
 import { SampleBrowser } from './SampleBrowser';
@@ -84,6 +86,7 @@ type Modal =
   | { kind: 'export' }
   | { kind: 'settings' }
   | { kind: 'welcome' }
+  | { kind: 'keys' }
   | { kind: 'removePattern'; id: string }
   | { kind: 'about'; notices: string; version: string; platform: string; logFile: string }
   | { kind: 'unsaved'; then: 'close' | 'new' | 'open' | 'update'; path?: string }
@@ -228,6 +231,8 @@ export function App() {
 
   useEffect(() => {
     let raf = 0;
+    let ending = false;
+    let wasIdle = false;
     const lastPlay = new Map<string, HTMLElement>();
     const level = (p: number) => Math.max(0, Math.min(1, 1 + (20 * Math.log10(Math.max(p, 1e-6))) / 60));
     const frame = () => {
@@ -238,6 +243,10 @@ export function App() {
         lastPlay.clear();
       }
       if (!engine) return;
+      // Stopped and quiet: draw the resting state once, then leave the frames idle (saves battery).
+      const idle = engine.idle;
+      if (idle && wasIdle) return;
+      wasIdle = idle;
       const p = projectRef.current;
       const audible = engine.audiblePatternId;
       setAudiblePattern((prev) => (prev === audible ? prev : audible));
@@ -245,8 +254,11 @@ export function App() {
       const idx = song?.index ?? -1;
       setSongIndex((prev) => (prev === idx ? prev : idx));
       if (song?.finished) {
-        // End of the song (no loop): stop once the last bar has been heard.
-        void engine.stop().then(() => setPlaying(false));
+        // End of the song (no loop): stop once the last bar has been heard (once, not on every frame until it has).
+        if (!ending) {
+          ending = true;
+          void engine.stop().then(() => setPlaying(false)).finally(() => (ending = false));
+        }
       } else if (song && idx >= 0) {
         // In song mode the grid follows the pattern being heard.
         const id = p.song[idx]?.patternId;
@@ -379,7 +391,7 @@ export function App() {
       let lastId: string | null = null;
       for (const f of files) {
         if (!SAMPLE_FILE.test(f.name)) {
-          notify(`${f.name}: use WAV, MP3, FLAC or OGG sound files.`);
+          notify(`${f.name}: use WAV, AIFF, MP3, FLAC or OGG sound files.`);
           continue;
         }
         try {
@@ -955,6 +967,26 @@ export function App() {
     }
   }, [defaultBars, exportBars, exportSong, exportFormat, notify, fail]);
 
+  // --- tap tempo (Tap button or T) ---
+  const taps = useRef<number[]>([]);
+  const tapKey = useRef('');
+  const tapTempoNow = useCallback(() => {
+    const now = performance.now();
+    const first = !taps.current.length || now - taps.current[taps.current.length - 1] > TAP_RESET_MS;
+    if (first) tapKey.current = `tap:${now}`;
+    const r = tapTempo(taps.current, now);
+    taps.current = r.taps;
+    if (r.bpm == null) notify('Tap tempo: keep tapping in time');
+    else {
+      const bpm = r.bpm;
+      // One undo step for one run of taps.
+      edit((p) => ({ ...p, bpm }), tapKey.current);
+      notify(`Tap tempo: ${bpm} BPM`);
+    }
+  }, [edit, notify]);
+  const tapRef = useRef(tapTempoNow);
+  tapRef.current = tapTempoNow;
+
   // --- keyboard shortcuts ---
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1057,6 +1089,11 @@ export function App() {
         if (songModeRef.current || p.song.length) setSongMode(!songModeRef.current);
       } else if (!ctrl && k === 'k') {
         edit((q) => ({ ...q, metronome: !q.metronome }));
+      } else if (!ctrl && !e.altKey && k === 't') {
+        if (!e.repeat) tapRef.current();
+      } else if (!ctrl && (e.key === '?' || e.key === 'F1')) {
+        e.preventDefault();
+        setModal({ kind: 'keys' });
       } else if (!ctrl && k === 'a') {
         const t = p.tracks.find((x) => x.id === st.selectedTrack);
         if (t) auditionTrack(t.id);
@@ -1128,7 +1165,10 @@ export function App() {
             <Icon name={playing ? 'stop' : 'play'} size={18} />
             <span className="lbl">{playing ? 'Stop' : 'Play'}</span>
           </button>
-          <NumberField label="BPM" value={project.bpm} min={20} max={300} decimals={1} onCommit={(v) => edit((p) => ({ ...p, bpm: v }))} title="Type a tempo (20–300) and press Enter. Arrow keys: ±1, Shift: ±10" />
+          <NumberField label="BPM" value={project.bpm} min={20} max={300} decimals={1} wheel onCommit={(v, k) => edit((p) => ({ ...p, bpm: v }), k)} title="Type a tempo (20–300) and press Enter. Arrow keys or mouse wheel: ±1, with Shift: ±10" />
+          <button className="small tap" onClick={tapTempoNow} title="Tap tempo (T): click in time with the music, the tempo follows">
+            Tap
+          </button>
           <Slider label="Swing" value={project.swing} min={50} max={75} step={0.5} format={(v) => `${v.toFixed(1)}%`} onChange={(v, k) => edit((p) => ({ ...p, swing: v }), k)} />
           <button className={`toggle ${project.metronome ? 'on' : ''}`} aria-pressed={project.metronome} onClick={() => edit((p) => ({ ...p, metronome: !p.metronome }))} title="Metronome (K)">
             <Icon name="click" />
@@ -1215,8 +1255,6 @@ export function App() {
             {[8, 12, 16, 24, 32, 48, 64].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
-        <span className="sep" />
-        <span className="hint">Edit lane: Ctrl+C / Ctrl+V · Delete clears lane</span>
       </nav>
 
       <SongBar
@@ -1551,8 +1589,10 @@ export function App() {
         <span className="right-info">
           {engineRef.current ? `${engineRef.current.ac.sampleRate} Hz` : ''}
           {!inElectron && ' · browser test mode'}
-          {' · Space play/stop · arrows + Enter edit · 1–8 patterns'}
         </span>
+        <button className="link keys-help" onClick={() => setModal({ kind: 'keys' })} title="Every keyboard shortcut (?)">
+          ? Keyboard shortcuts
+        </button>
       </footer>
 
       {toast && <div className="toast" role="status">{toast}</div>}
@@ -1688,6 +1728,15 @@ export function App() {
             <button onClick={() => { endWelcome(); guarded('open'); }}>Open a project…</button>
             <button onClick={endWelcome}>Start with this beat</button>
             <button className="primary" onClick={() => { endWelcome(); saveLayout({ ...layout, tool: 'library', toolsOpen: true }); }}>Browse the Beat library</button>
+          </div>
+        </Dialog>
+      )}
+
+      {modal?.kind === 'keys' && (
+        <Dialog title="Keyboard shortcuts" wide>
+          <KeyboardMap />
+          <div className="actions">
+            <button className="primary" onClick={() => setModal(null)}>Close</button>
           </div>
         </Dialog>
       )}

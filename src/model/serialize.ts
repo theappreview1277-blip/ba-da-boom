@@ -1,6 +1,7 @@
 import { defaultSound, emptyLane, emptyStep } from './defaults';
 import { factorySampleRefs } from './factory';
 import { ASSIGNABLE_KEY } from './live';
+import { readTrackPlan } from './arrange';
 import {
   MAX_SONG_BARS,
   MAX_STEPS,
@@ -185,6 +186,7 @@ export function parseProject(text: string): Project {
     song,
     songLoop: bool(p.songLoop, true),
     samples,
+    ...(readTrackPlan(p.trackPlan) ? { trackPlan: readTrackPlan(p.trackPlan) } : {}),
   };
 }
 

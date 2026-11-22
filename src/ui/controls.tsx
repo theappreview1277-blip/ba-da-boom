@@ -141,8 +141,11 @@ interface NumberFieldProps {
   max: number;
   /** Decimal places kept when committing. */
   decimals?: number;
-  onCommit: (v: number) => void;
+  /** `mergeKey` is set for mouse-wheel turns, stable for one burst of turning so it becomes one undo step. */
+  onCommit: (v: number, mergeKey?: string) => void;
   title?: string;
+  /** The mouse wheel over the box changes the value by 1 a notch (10 with Shift). */
+  wheel?: boolean;
 }
 
 /**
@@ -150,9 +153,32 @@ interface NumberFieldProps {
  * leaving the box, then it is clamped to min–max (Escape or junk restores the
  * value). Arrow keys step by 1, Shift+arrow by 10.
  */
-export function NumberField({ label, value, min, max, decimals = 0, onCommit, title }: NumberFieldProps) {
+export function NumberField({ label, value, min, max, decimals = 0, onCommit, title, wheel }: NumberFieldProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const cancelled = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
+  const latest = useRef({ value, min, max, decimals, onCommit });
+  latest.current = { value, min, max, decimals, onCommit };
+  useEffect(() => {
+    const el = input.current;
+    if (!wheel || !el) return;
+    // A wheel listener that isn't passive, so the page doesn't scroll while the tempo changes.
+    let key = '';
+    let lastTurn = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.deltaY) return;
+      e.preventDefault();
+      const now = performance.now();
+      if (now - lastTurn > 600) key = `${label}:wheel:${++gesture}`;
+      lastTurn = now;
+      const { value: v, min: lo, max: hi, decimals: d, onCommit: commitTo } = latest.current;
+      const f = 10 ** d;
+      const next = Math.min(hi, Math.max(lo, Math.round((v + (e.shiftKey ? 10 : 1) * (e.deltaY < 0 ? 1 : -1)) * f) / f));
+      if (next !== v) commitTo(next, key);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [wheel, label]);
   const shown = draft ?? String(value);
   useEffect(() => setDraft(null), [value]);
   const commit = (text: string) => {
@@ -167,6 +193,7 @@ export function NumberField({ label, value, min, max, decimals = 0, onCommit, ti
     <label className="num" title={title}>
       {label}
       <input
+        ref={input}
         type="text"
         inputMode="decimal"
         aria-label={label}

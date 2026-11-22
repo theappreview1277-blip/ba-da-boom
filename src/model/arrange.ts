@@ -543,7 +543,7 @@ export function buildTrack(p: Project, o: ArrangeOptions): { project: Project; a
   const kept = p.patterns.filter((pt) => !arrangedKind(pt.id));
   const patterns = [...kept, ...a.patterns];
   return {
-    project: { ...p, bpm: a.bpm, swing: a.swing, patterns, song: a.song, songLoop: false, currentPatternId: a.patterns[0]?.id ?? p.currentPatternId },
+    project: { ...p, bpm: a.bpm, swing: a.swing, patterns, song: a.song, songLoop: false, currentPatternId: a.patterns[0]?.id ?? p.currentPatternId, trackPlan: o },
     arrangement: a,
   };
 }
@@ -556,15 +556,65 @@ export function buildTrack(p: Project, o: ArrangeOptions): { project: Project; a
  */
 export function retakeSection(p: Project, o: ArrangeOptions, kind: SectionKind): { project: Project; takes: Partial<Record<SectionKind, number>>; whole: boolean } {
   const takes = { ...o.takes, [kind]: (o.takes?.[kind] ?? 0) + 1 };
-  const a = arrange(p, { ...o, takes });
+  const plan: ArrangeOptions = { ...o, takes };
+  const a = arrange(p, plan);
   const mine = p.patterns.filter((pt) => arrangedKind(pt.id) === kind);
   const fresh = a.patterns.filter((pt) => arrangedKind(pt.id) === kind);
-  const byName = new Map(mine.map((pt) => [pt.name, pt]));
-  if (!mine.length || mine.length !== fresh.length || fresh.some((pt) => !byName.has(pt.name))) {
-    return { project: buildTrack(p, { ...o, takes }).project, takes, whole: true };
+  if (!mine.length || mine.length !== fresh.length) {
+    return { project: buildTrack(p, plan).project, takes, whole: true };
   }
-  const lanes = new Map(fresh.map((pt) => [byName.get(pt.name)!.id, pt.lanes]));
-  return { project: { ...p, patterns: p.patterns.map((pt) => (lanes.has(pt.id) ? { ...pt, lanes: lanes.get(pt.id)! } : pt)) }, takes, whole: false };
+  // Each new pattern replaces the one with its name. Patterns renamed since the
+  // build are matched by their place in the track instead (the order they were
+  // built in), so a rename doesn't throw away the rest of the track.
+  const byName = new Map(mine.map((pt) => [pt.name, pt]));
+  const target = fresh.every((pt) => byName.has(pt.name)) ? fresh.map((pt) => byName.get(pt.name)!) : builtOrder(p, mine);
+  const lanes = new Map(fresh.map((pt, i) => [target[i].id, pt.lanes]));
+  return { project: { ...p, patterns: p.patterns.map((pt) => (lanes.has(pt.id) ? { ...pt, lanes: lanes.get(pt.id)! } : pt)), trackPlan: plan }, takes, whole: false };
+}
+
+/** Built patterns in the order the builder made them: by first use in the song, then the pattern list. */
+function builtOrder(p: Project, pts: Pattern[]): Pattern[] {
+  const first = (id: string) => {
+    const i = p.song.findIndex((e) => e.patternId === id);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return pts.map((pt, i) => ({ pt, i })).sort((a, b) => first(a.pt.id) - first(b.pt.id) || a.i - b.i).map((x) => x.pt);
+}
+
+/** Track settings read back from a project file; anything unusable is dropped. */
+export function readTrackPlan(v: unknown): ArrangeOptions | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const src = (o.source && typeof o.source === 'object' ? o.source : {}) as Record<string, unknown>;
+  let source: GrooveSource;
+  if (src.kind === 'style' && typeof src.styleId === 'string') source = { kind: 'style', styleId: src.styleId };
+  else if (src.kind === 'classic' && typeof src.classicId === 'string') source = { kind: 'classic', classicId: src.classicId };
+  else if (src.kind === 'pattern' && typeof src.patternId === 'string') source = { kind: 'pattern', patternId: src.patternId };
+  else return undefined;
+  const num = (x: unknown, lo: number, hi: number, d: number) => (typeof x === 'number' && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d);
+  const sections = Array.isArray(o.sections)
+    ? o.sections
+        .filter((s): s is { kind: SectionKind; bars: number } => !!s && (SECTION_KINDS as readonly unknown[]).includes((s as Section).kind) && typeof (s as Section).bars === 'number')
+        .map((s) => ({ kind: s.kind, bars: clampBars(s.bars) }))
+    : [];
+  const takes: Partial<Record<SectionKind, number>> = {};
+  if (o.takes && typeof o.takes === 'object') {
+    for (const k of SECTION_KINDS) {
+      const n = (o.takes as Record<string, unknown>)[k];
+      if (typeof n === 'number' && Number.isInteger(n) && n > 0) takes[k] = Math.min(n, 1e6);
+    }
+  }
+  return {
+    source,
+    form: typeof o.form === 'string' && (o.form === 'auto' || FORMS.some((f) => f.id === o.form)) ? o.form : 'auto',
+    length: LENGTHS.some((l) => l.id === o.length) ? (o.length as TrackLength) : 'normal',
+    fills: FILL_PLANS.some((f) => f.id === o.fills) ? (o.fills as FillPlan) : 'phrases',
+    complexity: num(o.complexity, 0, 1, 0.5),
+    seed: Math.round(num(o.seed, 0, 2 ** 31 - 1, 1)),
+    tempo: typeof o.tempo === 'boolean' ? o.tempo : true,
+    ...(sections.length ? { sections } : {}),
+    takes,
+  };
 }
 
 /** The song as sections, for the timeline: song entries in a row from the same kind of section join up. */

@@ -13,7 +13,7 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
 * Per-step velocity, probability (seeded), microtiming and ratchets
 * Tempo, swing, metronome, mute/solo, immediate stop
 * Patterns with names you can change (double-click or F2), copy/paste/duplicate/clear, undo/redo, quantised switching at the next bar
-* Synthesised CC0 factory kit, an Acoustic Kit recorded from real drums (Virtuosity Drums, CC0), sound import: WAV, MP3, FLAC and OGG (drag and drop or Import…; other formats are stored as WAV), auditioning
+* Synthesised CC0 factory kit, an Acoustic Kit recorded from real drums (Virtuosity Drums, CC0), sound import: WAV, AIFF, MP3, FLAC and OGG (drag and drop or Import…; other formats are stored as WAV), auditioning
 * Kit menu with Strudel's 71 drum machine kits (TR-808, TR-909, LinnDrum, MPC60…), included in the
   installer and fetched by `npm run kits` at build time (not stored in git; no licence is stated for them)
 * Per-track volume, pan, pitch, sample start/end, reverse, attack/decay/sustain/release, choke groups,
@@ -48,7 +48,7 @@ unsigned: Windows SmartScreen will warn ("Windows protected your PC"); choose
   fills (snare roll, tom run, build, drop out) as a new queued pattern or in place, and humanise with
   natural, laid back, pushed and tight feels. Break-style patterns are rhythms written for the grid and
   played with your kit; no recordings are included
-* Sample folders: add your own folders of sounds (WAV, MP3, FLAC, OGG) to the sample list (remembered), favourites (☆),
+* Sample folders: add your own folders of sounds (WAV, AIFF, MP3, FLAC, OGG) to the sample list (remembered), favourites (☆),
   resizable side panels (drag the edges, double-click to reset); the sample list folds away (Hide) to a
   narrow Sounds strip
 * Each control has one place: step loudness, chance and timing in the strip under the tracks; level, pan
