@@ -85,6 +85,7 @@ PlayModel parsePlayModel(const std::string& text) {
         tr.id = str(t, "id");
         tr.name = str(t, "name");
         tr.play = t.value("play", false);
+        tr.note = static_cast<int>(num(t, "note", -1));
         tr.controls = parseControls(t.value("controls", json::object()));
         m.tracks.push_back(std::move(tr));
     }
@@ -119,6 +120,11 @@ PlayModel parsePlayModel(const std::string& text) {
         if (se.pattern >= 0 && se.pattern < static_cast<int>(m.patterns.size()) && se.bars > 0) m.song.push_back(se);
     }
     if (m.currentPattern < 0 || m.currentPattern >= static_cast<int>(m.patterns.size())) m.currentPattern = 0;
+    if (auto nm = j.find("noteMap"); nm != j.end() && nm->is_array())
+        for (size_t n = 0; n < nm->size() && n < 128; n++) {
+            const int i = (*nm)[n].is_number() ? (*nm)[n].get<int>() : -1;
+            m.noteMap[n] = i >= 0 && i < static_cast<int>(m.tracks.size()) ? i : -1;
+        }
     const json samples = j.value("samples", json::object());  // kept alive: items() refers into it
     for (auto& [k, v] : samples.items()) m.samples[k] = {str(v, "file"), str(v, "source")};
     return m;

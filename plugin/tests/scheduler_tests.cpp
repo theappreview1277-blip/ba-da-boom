@@ -89,3 +89,17 @@ TEST("songs play the app's hits, looping or ending") {
         n++;
     }
 }
+
+TEST("songs come out the same when asked for in small blocks") {
+    auto v = vectors();
+    int n = 0;
+    for (auto& c : v["cases"]) {
+        PlayModel m = parsePlayModel(c["model"].dump());
+        const double end = c["song"]["end"].get<double>();
+        std::vector<Hit> got;
+        for (double t = 0; t < end; t += 0.0137) songHits(m, t, std::min(end, t + 0.0137), got);
+        auto diff = compare(got, c["song"]["hits"]);
+        CHECK(diff.empty(), "case " + std::to_string(n) + ": " + diff);
+        n++;
+    }
+}

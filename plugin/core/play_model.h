@@ -1,5 +1,6 @@
 // The play model the app's screen sends to the plugin (src/plugin/playModel.ts).
 #pragma once
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -44,6 +45,7 @@ struct Controls {
 struct Track {
     std::string id, name;
     bool play = false;
+    int note = -1;  // the MIDI note the track's pad sends, -1 none
     Controls controls;
 };
 
@@ -70,6 +72,12 @@ struct PlayModel {
     std::vector<Pattern> patterns;
     int currentPattern = 0;
     std::map<std::string, SampleInfo> samples;
+    /** The track each MIDI note plays (-1 none), by note number. */
+    std::array<int, 128> noteMap = [] {
+        std::array<int, 128> a;
+        a.fill(-1);
+        return a;
+    }();
 
     int songBars() const {
         int n = 0;

@@ -1,4 +1,5 @@
 // Playing live: the sound card, the drum pads, recording what is played, and MIDI controllers.
+import { inPlugin } from '../plugin/bridge';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { trackControls } from '../engine/strudel/fromModel';
 import { currentLane, setStep } from '../model/ops';
@@ -194,7 +195,8 @@ export function useLive(ctx: AppCtx, project: Project, opts: LiveOptions) {
       setLastNote({ note, input, track: i == null ? null : p.tracks[i].name });
       if (i != null) hitRef.current(i, velocity);
     };
-    void midi.start();
+    // In the plugin the host sends the MIDI notes, so controllers are left to it.
+    if (!inPlugin) void midi.start();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     // Wait for the saved choice, so an input that is turned off is never opened.

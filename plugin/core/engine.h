@@ -57,10 +57,20 @@ public:
     void trigger(const PlayModel& m, const SampleSet& s, const Hit& h, double time, double cps);
     /**
      * Renders `frames` frames starting at engine time `time` into `mix` (stereo) and, when given,
-     * `tracks` (kMaxTracks stereo pairs, may be null). Outputs are added to, not cleared.
+     * `tracks` (kMaxTracks stereo pairs, may be null). Outputs are overwritten.
      * Track outputs are before the master volume and clipper; the mix is after.
      */
     void render(double time, int frames, float* mixL, float* mixR, float* const* tracks, double masterVolume, bool clip = true);
+    /** An extra gain for a track's sound (the plugin's volume and mute), reached smoothly over the next render. */
+    void setTrackGain(int track, double gain) {
+        if (track >= 0 && track < kMaxTracks) trackGain_[track] = gain;
+    }
+    /** Each track's peak level since the last call (whether or not the host takes its own output), then reset. */
+    float takePeak(int track) {
+        const float p = peaks_[track];
+        peaks_[track] = 0;
+        return p;
+    }
     /** Fades every sound out quickly (transport stop). */
     void stopAll(double time);
     void clear();
@@ -72,6 +82,13 @@ private:
     std::array<Voice, kMaxVoices> voices_{};
     std::array<Voice*, 64> cutGroups_{};  // superdough's cutGroups, by choke group number
     SoftClipper clipper_;
+    std::array<float, kMaxTracks> peaks_{};
+    std::array<double, kMaxTracks> trackGain_ = filled(1.0), trackGainDone_ = filled(1.0);
+    static std::array<double, kMaxTracks> filled(double v) {
+        std::array<double, kMaxTracks> a;
+        a.fill(v);
+        return a;
+    }
 };
 
 /** What an offline render (export) gives back. */

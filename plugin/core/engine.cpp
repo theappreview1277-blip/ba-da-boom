@@ -173,6 +173,8 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
         const auto n = static_cast<double>(s.frames());
         const float* c0 = s.data[0].data();
         const float* c1 = mono ? c0 : s.data[1].data();
+        const int ti = v.track < kMaxTracks ? v.track : 0;
+        const double g0 = trackGainDone_[ti], gStep = (trackGain_[ti] - g0) / frames;
         float* tl = tracks && v.track < kMaxTracks ? tracks[2 * v.track] : nullptr;
         float* tr = tracks && v.track < kMaxTracks ? tracks[2 * v.track + 1] : nullptr;
         for (int f = 0; f < frames; f++) {
@@ -213,12 +215,17 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
             }
             float ol, orr;
             stereoPan(l, mono ? l : r, mono, v.pan, ol, orr);
+            const auto tg = static_cast<float>(g0 + gStep * f);
+            ol *= tg;
+            orr *= tg;
+            peaks_[ti] = std::max(peaks_[ti], std::max(std::abs(ol), std::abs(orr)));
             mixL[f] += ol;
             mixR[f] += orr;
             if (tl) tl[f] += ol;
             if (tr) tr[f] += orr;
         }
     }
+    trackGainDone_ = trackGain_;
     for (int f = 0; f < frames; f++) {
         const float l = static_cast<float>(mixL[f] * masterVolume), r = static_cast<float>(mixR[f] * masterVolume);
         mixL[f] = clip ? clipper_.process(l) : l;

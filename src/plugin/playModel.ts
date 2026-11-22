@@ -7,10 +7,14 @@
 // Format (version 1), all numbers plain JSON:
 //   { version, bpm, swing, seed, masterVolume, songLoop, song: [{ pattern, bars }],
 //     tracks: [{ id, name, play, controls }], patterns: [{ id, name, lanes: [lane per track] }],
-//     samples: { <superdough sound name>: { file, source } }, currentPattern }
+//     samples: { <superdough sound name>: { file, source } }, currentPattern,
+//     noteMap: [track index or -1, for each MIDI note 0..127] }
+//   track.note: the MIDI note the track's pad sends (-1 none), as shown on the pads.
 //   lane: { length, steps: [[on, velocity, probability, micro, ratchet], ...length] }
 
 import { hasSound, isAudible, soundKey, stepSeed, trackControls } from '../engine/strudel/fromModel';
+import type { MidiMap } from '../main/ipc';
+import { noteToPad, padNoteList } from '../model/live';
 import type { Project } from '../model/types';
 
 export const PLAY_MODEL_VERSION = 1;
@@ -29,14 +33,16 @@ export interface PlayModel {
   masterVolume: number;
   songLoop: boolean;
   song: { pattern: number; bars: number }[];
-  tracks: { id: string; name: string; play: boolean; controls: Record<string, unknown> }[];
+  tracks: { id: string; name: string; play: boolean; note: number; controls: Record<string, unknown> }[];
   patterns: { id: string; name: string; lanes: (PlayModelLane | null)[] }[];
   currentPattern: number;
   samples: Record<string, { file: string; source: string }>;
+  noteMap: number[];
 }
 
-/** `missing`: sample ids that could not be loaded; their tracks are left silent, as in the app. */
-export function playModel(project: Project, missing: Set<string> = new Set()): PlayModel {
+/** `midiMap`: the MIDI notes setting. `missing`: sample ids that could not be loaded; their tracks are left silent, as in the app. */
+export function playModel(project: Project, missing: Set<string> = new Set(), midiMap: MidiMap = 'gm'): PlayModel {
+  const notes = padNoteList(project.tracks, midiMap);
   const patternIndex = new Map(project.patterns.map((p, i) => [p.id, i]));
   const samples: PlayModel['samples'] = {};
   for (const ref of Object.values(project.samples)) samples[soundKey(ref.id)] = { file: ref.file, source: ref.source };
@@ -55,6 +61,7 @@ export function playModel(project: Project, missing: Set<string> = new Set()): P
         isAudible(t, project.tracks) &&
         hasSound(t) &&
         !(t.sound.source === 'sample' && t.sound.sampleId && missing.has(t.sound.sampleId)),
+      note: notes[i] ?? -1,
       controls: trackControls(t, i, project),
     })),
     patterns: project.patterns.map((p) => ({
@@ -71,6 +78,7 @@ export function playModel(project: Project, missing: Set<string> = new Set()): P
     })),
     currentPattern: patternIndex.get(project.currentPatternId) ?? 0,
     samples,
+    noteMap: Array.from({ length: 128 }, (_, n) => noteToPad(n, project.tracks, midiMap) ?? -1),
   };
 }
 

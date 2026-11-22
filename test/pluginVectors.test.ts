@@ -104,3 +104,20 @@ describe('plugin reference events', () => {
     expect(data.cases.some((c) => !c.model.songLoop) && data.cases.some((c) => c.model.songLoop)).toBe(true);
   });
 });
+
+// The beat a newly added plugin plays before its screen has been opened: the app's new
+// project, as a play model. Built into the plugin from plugin/default-model.json.
+describe('the plugin starts with the app new project', () => {
+  it('plugin/default-model.json is current', () => {
+    const file = new URL('../plugin/default-model.json', import.meta.url);
+    // Pattern ids are random: fixed ones keep the file stable.
+    const project = newProject();
+    project.patterns.forEach((x, i) => {
+      if (x.id === project.currentPatternId) project.currentPatternId = `p${i}`;
+      x.id = `p${i}`;
+    });
+    const fresh = JSON.stringify(playModel(project));
+    if (process.env.BDB_WRITE_VECTORS) writeFileSync(file, fresh);
+    expect(readFileSync(file, 'utf8')).toBe(fresh);
+  });
+});

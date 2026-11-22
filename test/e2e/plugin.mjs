@@ -19,6 +19,19 @@ const RENDER =
 // Export trims the tail where it falls below -80 dB. A filter's ringing can cross that
 // line a few milliseconds apart in the two engines, so the lengths may differ by up to 20 ms.
 const TAIL_FRAMES = 882;
+const HOST =
+  process.env.BDB_HOST_TEST ??
+  [
+    join(REPO, '..', 'build-plugin', 'bdb_host_test_artefacts', 'Release', 'bdb_host_test'),
+    join(REPO, 'plugin', 'build', 'bdb_host_test_artefacts', 'Release', 'bdb_host_test'),
+    join(REPO, 'plugin', 'build', 'bdb_host_test_artefacts', 'Release', 'bdb_host_test.exe'),
+  ].find(existsSync);
+const VST3 =
+  process.env.BDB_VST3 ??
+  [join(REPO, '..', 'build-plugin', 'Badaboom_artefacts', 'Release', 'VST3', 'Ba-da-boom.vst3'), join(REPO, 'plugin', 'build', 'Badaboom_artefacts', 'Release', 'VST3', 'Ba-da-boom.vst3')].find(existsSync);
+const STANDALONE =
+  process.env.BDB_STANDALONE ??
+  [join(REPO, '..', 'build-plugin', 'Badaboom_artefacts', 'Release', 'Standalone', 'Ba-da-boom'), join(REPO, 'plugin', 'build', 'Badaboom_artefacts', 'Release', 'Standalone', 'Ba-da-boom')].find(existsSync);
 const FACTORY = process.env.BDB_FACTORY ?? join(REPO, 'resources', 'samples');
 
 // One setting each, on top of the base beat (track index -> sound patch).
@@ -100,6 +113,7 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
         });
       });
       window.__parityBase = p;
+      window.__parityFactory = structuredClone(p);  // the factory kit, for the host test (its pool is the app's, not the test profile's)
     });
 
     const runCase = async (name, patch, bars = 2) => {
@@ -146,6 +160,89 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
     CASES.push(['the Acoustic Kit (stereo samples)', {}]);
     const r = await runCase('the Acoustic Kit (stereo samples)', { 0: { pitch: 2 }, 1: { lowpass: 2000 } });
     t.check('sounds like the app: the Acoustic Kit (stereo samples)', !r.error && r.events[0] === r.events[1] && Math.abs(r.frames[0] - r.frames[1]) <= TAIL_FRAMES && r.db < limitDb, r.error ?? `${r.db.toFixed(1)} dB, events ${r.events.join('/')}, frames ${r.frames.join('/')}`);
+
+    // --- The built VST3 in a host: state, transport, outputs, MIDI out, automation and its screen ---
+    t.check('the VST3 and the test host are built', !!HOST && !!VST3, `${HOST ?? 'no host (set BDB_HOST_TEST)'} / ${VST3 ?? 'no VST3 (set BDB_VST3)'}`);
+    if (HOST && VST3) {
+      const got = await win.evaluate(async () => {
+        const { renderPattern, playModel, serializeProject } = window.__bdb;
+        const p = structuredClone(window.__parityFactory);
+        const r = await renderPattern(p, { patternId: p.currentPatternId, bars: 2, missingSamples: new Set() });
+        const b64 = (f) => {
+          const u = new Uint8Array(f.buffer, f.byteOffset, f.byteLength);
+          let s = '';
+          for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
+          return btoa(s);
+        };
+        const model = playModel(p);
+        const hits = model.patterns[model.currentPattern].lanes.length;
+        return { project: serializeProject(p), model: JSON.stringify(model), ch: [0, 1].map((c) => b64(r.buffer.getChannelData(c))), lanes: hits };
+      });
+      const hostDir = mkdtempSync(join(tmpdir(), 'bdb-host-'));
+      writeFileSync(join(hostDir, 'project.txt'), got.project);
+      writeFileSync(join(hostDir, 'model.json'), got.model);
+      const reportFile = join(hostDir, 'screen.json');
+      const screenEnv = { BDB_PLUGIN_TEST_SCRIPT: join(REPO, 'test', 'e2e', 'plugin-screen.js'), BDB_PLUGIN_TEST_OUT: reportFile };
+      // On Windows the screen is opened inside the host. On Linux a JUCE host cannot drive a JUCE
+      // plugin's web view (its scripts never return), so there the screen is checked in the
+      // plugin's standalone build instead, with a silent sound device.
+      const screenInHost = process.platform === 'win32';
+      const out = spawnSync(HOST, screenInHost ? [VST3, hostDir, '--editor', '60'] : [VST3, hostDir], {
+        encoding: 'utf8',
+        timeout: 180000,
+        env: { ...process.env, ...screenEnv },
+      });
+      if (!screenInHost) {
+        t.check('the standalone build is there (for the screen check)', !!STANDALONE, STANDALONE ?? 'not found (set BDB_STANDALONE)');
+        const home = mkdtempSync(join(tmpdir(), 'bdb-standalone-'));
+        writeFileSync(join(home, '.asoundrc'), 'pcm.!default { type null }\nctl.!default { type hw card 0 }\n');
+        spawnSync(STANDALONE, [], { timeout: 90000, env: { ...process.env, ...screenEnv, HOME: home } });
+      }
+      const host = existsSync(join(hostDir, 'host.json')) ? JSON.parse(readFileSync(join(hostDir, 'host.json'), 'utf8')) : { error: out.stderr || `exit ${out.status}` };
+      t.check('the host loads the plugin as an instrument', !host.error && host.name === 'Ba-da-boom' && host.isInstrument, host.error ?? host.name);
+      t.check('all 17 stereo outputs can be switched on (the mix and one per track)', host.allOutputs === true && host.outputChannels === 34, `${host.allOutputs} ${host.outputChannels}`);
+      t.check('it takes MIDI in and sends MIDI out', host.acceptsMidi && host.producesMidi);
+      const app = got.ch.map(fromBase64).map((c) => c.subarray(0, host.frames));
+      app.forEach((c, i) => writeFileSync(join(hostDir, `app-${i}.f32`), Buffer.from(c.buffer, c.byteOffset, c.byteLength)));  // for looking into a failure
+      const plug = existsSync(join(hostDir, 'mix.wav')) ? readFloatWav(join(hostDir, 'mix.wav')) : [new Float32Array(), new Float32Array()];
+      const db = residualDb(app, plug);
+      t.check('played by the host transport, it sounds like the app', db < limitDb, `${db.toFixed(1)} dB over ${host.frames} frames`);
+      const model = JSON.parse(got.model);
+      const lane = (ti) => model.patterns[model.currentPattern].lanes[ti];
+      let want = 0;
+      for (let ti = 0; ti < model.tracks.length; ti++) {
+        const l = lane(ti);
+        if (!l || !model.tracks[ti].play || model.tracks[ti].note < 0) continue;
+        // Steps that can't miss (chance 1) play once a bar for two bars; ratchets add hits.
+        for (let k = 0; k < 2 * 16; k++) {
+          const s = l.steps[k % l.length];
+          if (s[0] && s[2] >= 1 && s[1] > 0) want += s[4];
+        }
+      }
+      t.check('every hit goes out as a MIDI note, and each is let go', host.noteOns >= want && host.noteOns === host.noteOffs, `${host.noteOns} on, ${host.noteOffs} off, at least ${want}`);
+      t.check('saved in the host project and loaded again, it plays the same', host.reloadResidualDb < -120 && host.projectKept, `${host.reloadResidualDb?.toFixed(1)} dB, project kept ${host.projectKept}`);
+      t.check('added to a track with nothing saved, it plays the new-project beat', host.freshEnergy > 0.01, `rms ${host.freshEnergy}`);
+      t.check('track 1 comes out of its own output, and the host can mute it', host.track1Energy > 0.001 && host.mutedTrack1Energy === 0, `${host.track1Energy} -> ${host.mutedTrack1Energy}`);
+      // 4 + 16 mutes + 16 volumes, and the bypass switch every VST3 has.
+      t.check('the host sees the volume, mute, song and pattern controls', host.parameters === 4 + 32 + 1, host.parameters);
+      const screen = existsSync(reportFile) ? JSON.parse(readFileSync(reportFile, 'utf8')) : null;
+      const c = screen?.checks ?? {};
+      t.check("the plugin's screen starts", (!screenInHost || host.editor) && c.screenStarted && c.pluginEngine === true, screen?.error ?? JSON.stringify(c).slice(0, 300));
+      if (screenInHost) {
+        t.check('the screen shows the project the host gave the plugin', c.bpmShown === JSON.parse(got.project).bpm && c.trackNames === JSON.parse(got.project).tracks.map((x) => x.name).join('|'), `${c.bpmShown} ${c.trackNames}`);
+      } else {
+        t.check('the screen shows its project and the plugin plays it', c.bpmShown === c.pluginBpm && c.trackNames?.startsWith('Kick|'), `${c.bpmShown} / ${c.pluginBpm}`);
+      }
+      t.check('Play on the screen previews the beat in the plugin, with the playhead and meters moving', c.playing && c.playheadDrawn > 0 && c.cycleMoved > 0.2 && c.metersMoved > 0.01 && c.stopped, JSON.stringify({ p: c.playing, h: c.playheadDrawn, c: c.cycleMoved, m: c.metersMoved, s: c.stopped }));
+      t.check('the plugin reports what it plays to the screen', c.stateEvents > 5, c.stateEvents);
+      t.check("a step changed on the screen reaches the plugin and the host's project", c.stepNowOn === !c.stepWasOn && c.pluginStepOn === c.stepNowOn, `${c.stepWasOn} -> ${c.stepNowOn}; in the plugin: ${c.pluginStepOn}`);
+      if (screenInHost) {
+        const after = host.projectAfterEditor ? JSON.parse(host.projectAfterEditor) : null;
+        const step = after?.patterns.find((x) => x.id === after.currentPatternId)?.lanes.t1?.steps[3];
+        t.check("and the host saves it with its project", !!after && !!step?.on === c.stepNowOn, `${step?.on}`);
+      }
+      t.check('no errors on the plugin screen', !c.pageErrors, c.pageErrors || 'none');
+    }
     t.check('no page errors', pageErrors.length === 0, pageErrors.join(' | ') || 'none');
   } finally {
     await closeApp(app, win);
