@@ -41,6 +41,9 @@ export interface QueuedSwitch {
 /** Seconds between a live hit and its sound: enough that it is never dropped as late. */
 const LIVE_HIT_DELAY = 0.03;
 
+/** Effect tails (reverb, delay) die away within this after the last sound. */
+const IDLE_AFTER_MS = 6000;
+
 export class AudioEngine {
   readonly ac: AudioContext;
   private scheduler!: CyclistLike;
@@ -63,6 +66,14 @@ export class AudioEngine {
   private songSpan: { origin: number; until: number } | null = null;
   onSampleStatus?: (id: string, status: SampleStatus) => void;
   onError?: (message: string) => void;
+
+  /** performance.now() of the last sound started outside playback (a pad, a preview), for the idle check. */
+  lastSoundAt = 0;
+
+  /** True while nothing plays and nothing has sounded for a few seconds, so meters can rest. */
+  get idle() {
+    return !this.isPlaying && performance.now() - this.lastSoundAt > IDLE_AFTER_MS;
+  }
 
   constructor(private resolveUrl: (ref: SampleRef) => string) {
     this.ac = new AudioContext({ latencyHint: 'interactive' });
@@ -133,6 +144,7 @@ export class AudioEngine {
 
   /** Register samples that are not (yet) in the project, e.g. to audition a file from a folder. */
   async previewSample(ref: SampleRef) {
+    this.lastSoundAt = performance.now();
     await this.registerSamples([ref]);
     return this.status.get(ref.id) === 'ok';
   }
@@ -302,6 +314,7 @@ export class AudioEngine {
    */
   stop(): Promise<void> {
     if (this.stopping) return this.stopping;
+    this.lastSoundAt = performance.now();
     this.scheduler.stop();
     this.queued = null;
     this.songSpan = null;
@@ -340,6 +353,7 @@ export class AudioEngine {
 
   /** Play a synth track's sound once, now (no sample to wait for). */
   async auditionSynth(controls: Record<string, unknown>) {
+    this.lastSoundAt = performance.now();
     if (this.ac.state !== 'running') await this.ac.resume();
     await superdough({ ...controls, orbit: METRONOME_ORBIT + 1 }, this.ac.currentTime + LIVE_HIT_DELAY, 0.25);
   }
@@ -349,6 +363,7 @@ export class AudioEngine {
    * track's own channel, so its effects apply and its meter moves.
    */
   async hit(controls: Record<string, unknown>, sampleId: string | null, velocity: number) {
+    this.lastSoundAt = performance.now();
     if (!controls.s || (sampleId && this.status.get(sampleId) !== 'ok')) return;
     if (this.ac.state !== 'running') await this.ac.resume();
     // Superdough drops a sound whose start time has passed by the time its sample is ready (the
@@ -374,6 +389,7 @@ export class AudioEngine {
 
   /** Play a sample once, now, with optional track sound controls. */
   async audition(sampleId: string, controls: Record<string, unknown> = {}) {
+    this.lastSoundAt = performance.now();
     if (this.status.get(sampleId) !== 'ok') return;
     if (this.ac.state !== 'running') await this.ac.resume();
     await superdough({ ...controls, s: soundKey(sampleId), orbit: METRONOME_ORBIT + 1 }, this.ac.currentTime + LIVE_HIT_DELAY, 0.5);

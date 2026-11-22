@@ -13,6 +13,7 @@ import {
   buildTrack,
   clampBars,
   planSections,
+  readTrackPlan,
   retakeSection,
   songSections,
   type ArrangeOptions,
@@ -209,5 +210,45 @@ describe('track beat intelligence: whole-track arrangement', () => {
     const back = parseProject(serializeProject(p));
     expect(songSections(back)).toEqual(secs);
     expect(back.songLoop).toBe(false);
+  });
+
+  it('remembers how the track was built, in the project and its file, so new takes work after reopening', () => {
+    const o = opts({ form: 'song', seed: 7, sections: [{ kind: 'intro', bars: 4 }, { kind: 'verse', bars: 8 }, { kind: 'chorus', bars: 8 }, { kind: 'outro', bars: 4 }] });
+    const p = buildTrack(newProject(), o).project;
+    expect(p.trackPlan).toEqual(o);
+    const back = parseProject(serializeProject(p));
+    expect(back.trackPlan).toEqual({ ...o, takes: {} });
+    const a = retakeSection(back, back.trackPlan!, 'verse');
+    expect(a.whole).toBe(false);
+    expect(a.project.trackPlan?.takes).toEqual({ verse: 1 });
+    expect(a.project.song).toEqual(back.song);
+    // A second take from the saved plan goes on from the first.
+    const b = retakeSection(a.project, a.project.trackPlan!, 'verse');
+    expect(b.project.trackPlan?.takes).toEqual({ verse: 2 });
+    const verses = (q: Project) => JSON.stringify(q.patterns.filter((pt) => arrangedKind(pt.id) === 'verse').map((pt) => pt.lanes));
+    expect(verses(b.project)).not.toBe(verses(a.project));
+    expect(verses(a.project)).not.toBe(verses(back));
+    // Projects without a built track have no plan, and broken plans are dropped.
+    expect(parseProject(serializeProject(newProject())).trackPlan).toBeUndefined();
+    expect(readTrackPlan({ source: { kind: 'nope' } })).toBeUndefined();
+    expect(readTrackPlan('x')).toBeUndefined();
+    const odd = readTrackPlan({ source: { kind: 'classic', classicId: 'amen' }, form: 'weird', length: 9, complexity: 5, seed: -3, takes: { chorus: 2, verse: 'x', bogus: 4 }, sections: [{ kind: 'break', bars: 7 }, { kind: 'nope', bars: 4 }] });
+    expect(odd).toEqual({ source: { kind: 'classic', classicId: 'amen' }, form: 'auto', length: 'normal', fills: 'phrases', complexity: 1, seed: 0, tempo: true, sections: [{ kind: 'break', bars: 8 }], takes: { chorus: 2 } });
+  });
+
+  it('a new take still keeps the rest of the track when its patterns were renamed', () => {
+    const o = opts({ form: 'song' });
+    let p = buildTrack(newProject(), o).project;
+    const verse = named(p, 'Verse');
+    p = setStep(p, verse.id, 't16', 5, { on: true });
+    const choruses = p.patterns.filter((pt) => arrangedKind(pt.id) === 'chorus');
+    p = { ...p, patterns: p.patterns.map((pt, i) => (arrangedKind(pt.id) === 'chorus' ? { ...pt, name: `My chorus ${i}` } : pt)) };
+    const { project: q, whole } = retakeSection(p, o, 'chorus');
+    expect(whole).toBe(false);
+    expect(q.song).toEqual(p.song);
+    expect(named(q, 'Verse').lanes.t16.steps[5].on).toBe(true);
+    // Each renamed chorus gets the new take of the chorus it was built as.
+    const fresh = buildTrack(newProject(), { ...o, takes: { chorus: 1 } }).project.patterns.filter((pt) => arrangedKind(pt.id) === 'chorus');
+    choruses.forEach((c, i) => expect(q.patterns.find((x) => x.id === c.id)!.lanes).toEqual(fresh[i].lanes));
   });
 });

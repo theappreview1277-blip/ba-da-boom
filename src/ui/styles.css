@@ -2032,3 +2032,56 @@ button.link {
 .song-entry[class*='kind-']:not(.kind-own) {
   border-left: 3px solid var(--kind);
 }
+
+/* --- keyboard shortcuts dialog and status bar button --- */
+.statusbar .keys-help {
+  color: var(--muted);
+  text-decoration: none;
+}
+.statusbar .keys-help:hover,
+.statusbar .keys-help:focus-visible {
+  color: var(--text, #eee);
+  text-decoration: underline;
+}
+.keymap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 4px 24px;
+  max-height: 62vh;
+  overflow: auto;
+}
+.keymap h3 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: var(--accent);
+}
+.keymap dl {
+  margin: 0;
+}
+.keymap-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.keymap-row dd {
+  margin: 0;
+}
+.keymap kbd {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg, #111);
+  white-space: nowrap;
+}
+.keymap .about {
+  grid-column: 1 / -1;
+}
+.transport .tap {
+  min-width: 0;
+}

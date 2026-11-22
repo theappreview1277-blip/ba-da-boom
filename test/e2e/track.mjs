@@ -122,6 +122,21 @@ export async function run(t) {
     const reopened = await state();
     t.check('the track survives save and reopen', JSON.stringify(reopened.song) === JSON.stringify(saved.song) && JSON.stringify(await timeline()) === JSON.stringify(savedTl), (await timeline()).join(' '));
 
+    // New takes still work after reopening: the project remembers how its track was built.
+    await openTool(win, 'Whole track');
+    t.check('after reopening, the Whole track tab shows the settings the track was built with', (await win.inputValue('.trackbuilder select[aria-label="Length"]')) === 'short' && (await win.inputValue('.trackbuilder select[aria-label="Style"]')) === 'dnb-twostep', `${await win.inputValue('.trackbuilder select[aria-label="Length"]')}, ${await win.inputValue('.trackbuilder select[aria-label="Style"]')}`);
+    const dropBtn = win.locator('.trackbuilder .retake:has-text("Drop")');
+    t.check('after reopening, New take is still available', (await dropBtn.count()) === 1 && (await dropBtn.isEnabled()), await dropBtn.getAttribute('title').catch(() => 'no button'));
+    const dropSaved = reopened.patterns.find((x) => x.name === 'Drop in');
+    const othersSaved = reopened.patterns.filter((x) => /^Intro|^Breakdown|^Outro/.test(x.name));
+    await dropBtn.click().catch(() => {});
+    await sleep(200);
+    const s3 = await state();
+    t.check('a new take after reopening changes only the drops', s3.patterns.find((x) => x.id === dropSaved?.id)?.lanes !== dropSaved?.lanes && othersSaved.every((x) => s3.patterns.find((y) => y.id === x.id)?.lanes === x.lanes) && JSON.stringify(s3.song) === JSON.stringify(reopened.song));
+    t.check('and it is a real new take, not a rebuild', /New take of every drop/.test((await win.textContent('.toast').catch(() => '')) ?? ''), await win.textContent('.toast').catch(() => ''));
+    await win.keyboard.press('Control+z');
+    await sleep(200);
+
     // A whole track, played from start to finish.
     await openTool(win, 'Whole track');
     await pick('Form', 'auto');

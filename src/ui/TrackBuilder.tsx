@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BLOCK_BARS,
   FILL_PLANS,
@@ -76,7 +76,26 @@ export function TrackBuilder({ project, pattern, playingIndex, onBuild, onRetake
   const [tempo, setTempo] = useState(true);
   const [custom, setCustom] = useState<Section[] | null>(null);
   const [takes, setTakes] = useState<Partial<Record<SectionKind, number>>>({});
-  const [built, setBuilt] = useState<ArrangeOptions | null>(null);
+  // The settings the track in the project was built with. Kept in the project,
+  // so new takes still work after saving and reopening, and never use the
+  // settings of a different project's track.
+  const built = project.trackPlan ?? null;
+  useEffect(() => {
+    // Show the settings of the track in the project (after opening a project or undo).
+    if (!built) return;
+    const src = built.source;
+    setSourceKind(src.kind);
+    if (src.kind === 'style') setStyleId(src.styleId);
+    if (src.kind === 'classic') setClassicId(src.classicId);
+    setFormId(built.form);
+    setLength(built.length);
+    setFills(built.fills);
+    setComplexity(built.complexity);
+    setSeed(built.seed);
+    setTempo(built.tempo);
+    setCustom(built.sections?.length ? built.sections.map((x) => ({ ...x })) : null);
+    setTakes(built.takes ?? {});
+  }, [built]);
   const [addKind, setAddKind] = useState<SectionKind>('verse');
 
   const source: GrooveSource =
@@ -201,7 +220,6 @@ export function TrackBuilder({ project, pattern, playingIndex, onBuild, onRetake
               onClick={() => {
                 const o = options();
                 onBuild(o);
-                setBuilt(o);
               }}
               title="Write the whole track as patterns and the song. A track built before is replaced; your own patterns stay. Ctrl+Z undoes it."
             >
@@ -248,12 +266,9 @@ export function TrackBuilder({ project, pattern, playingIndex, onBuild, onRetake
                   disabled={!built}
                   onClick={() => {
                     if (!built) return;
-                    const t = { ...takes, [k]: (takes[k] ?? 0) + 1 };
-                    onRetake({ ...built, takes }, k);
-                    setTakes(t);
-                    setBuilt({ ...built, takes: t });
+                    onRetake(built, k);
                   }}
-                  title={built ? `New beats for every ${kindNames(k).toLowerCase()}; the other sections and your edits to them stay` : 'Build the track in this session first'}
+                  title={built ? `New beats for every ${kindNames(k).toLowerCase()}; the other sections and your edits to them stay` : 'Build the track again first'}
                 >
                   {sectionName(built ? resolveForm(project, built) : form, k)}
                 </button>

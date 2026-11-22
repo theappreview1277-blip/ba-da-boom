@@ -1,3 +1,4 @@
+import type { ArrangeOptions } from './arrange';
 // The project model is the single source of truth for everything the grid edits.
 // Strudel patterns are generated from it (see src/engine/strudel); nothing in the
 // audio engine or UI should hold musical state that is not represented here.
@@ -168,4 +169,10 @@ export interface Project {
   /** Song mode starts again from the top after the last entry. */
   songLoop: boolean;
   samples: Record<string, SampleRef>;
+  /**
+   * The settings the whole track was last built with (Whole track tab), so a
+   * section can get a new take after the project is saved and reopened.
+   * Left out when no track has been built.
+   */
+  trackPlan?: ArrangeOptions;
 }
