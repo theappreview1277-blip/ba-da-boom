@@ -31,7 +31,7 @@ jobs:
         run: nuget install Microsoft.Web.WebView2 -Version 1.0.2903.40 -OutputDirectory "$RUNNER_TEMP/nuget"
       - name: Configure
         shell: bash
-        run: cmake -S plugin -B plugin/build -G "Visual Studio 17 2022" -A x64 -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$RUNNER_TEMP/nuget"
+        run: cmake -S plugin -B plugin/build -A x64 -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$RUNNER_TEMP/nuget"
       - name: Build
         run: cmake --build plugin/build --config Release --parallel --target Badaboom_VST3 Badaboom_CLAP bdb_core_tests bdb_render bdb_host_test
       - name: Engine tests

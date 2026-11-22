@@ -40,7 +40,7 @@ jobs:
       - name: Build the plugins
         shell: bash
         run: |
-          cmake -S plugin -B plugin/build -G "Visual Studio 17 2022" -A x64 -DBDB_TESTS=OFF -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$RUNNER_TEMP/nuget"
+          cmake -S plugin -B plugin/build -A x64 -DBDB_TESTS=OFF -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$RUNNER_TEMP/nuget"
           cmake --build plugin/build --config Release --parallel --target Badaboom_VST3 Badaboom_CLAP
           mkdir -p plugin-dist
           cp -r plugin/build/Badaboom_artefacts/Release/VST3/Ba-da-boom.vst3 plugin-dist/
