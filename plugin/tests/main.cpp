@@ -1,6 +1,7 @@
 #include "test.h"
 
 int main() {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);  // nothing is lost if a test crashes
     int failedCases = 0;
     for (auto& c : bdbtest::cases()) {
         const int before = bdbtest::failures();

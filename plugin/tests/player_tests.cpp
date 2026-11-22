@@ -1,3 +1,4 @@
+#include <memory>
 // The player as a host drives it: any block size, loops and seeks, stop, MIDI in and out,
 // mutes, preview and swapping the beat while it plays.
 #include <algorithm>
@@ -73,7 +74,8 @@ double residualDb(const std::vector<float>& a, const std::vector<float>& b) {
 
 double energy(const std::vector<float>& a, size_t from = 0, size_t to = SIZE_MAX) {
     double e = 0;
-    for (size_t i = from; i < std::min(to, a.size()); i++) e += a[i] * a[i];
+    const size_t end = std::min(to, a.size());
+    for (size_t i = from; i < end; i++) e += a[i] * a[i];
     return e;
 }
 
@@ -90,7 +92,10 @@ TEST("the player sounds the same for any block size, and like the offline render
     const double bpm = l->model.bpm, bars = 4;
     const double seconds = bars * 240 / bpm;
     auto ppq = [&](double s) { return s * bpm / 60; };
-    Player a, b;
+    auto aOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& a = *aOwned;
+    auto bOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& b = *bOwned;
     a.prepare(kRate);
     b.prepare(kRate);
     a.setLoaded(l);
@@ -109,7 +114,8 @@ TEST("the player sounds the same for any block size, and like the offline render
 TEST("every hit goes out as a MIDI note on its pad's note, and every note is let go") {
     auto l = loadCase(1);
     const double bpm = 120;
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(l);
     p.pattern = 1;
@@ -127,7 +133,8 @@ TEST("every hit goes out as a MIDI note on its pad's note, and every note is let
 TEST("a host loop plays the looped bars again") {
     auto l = loadCase(2);
     const double bpm = 100, bar = 240 / bpm;
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(l);
     p.pattern = 0;
@@ -146,7 +153,8 @@ TEST("a host loop plays the looped bars again") {
 
 TEST("stopping the transport fades the sound out within 20 ms") {
     auto l = loadCase(3);
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(l);
     const double bpm = 140;
@@ -159,7 +167,8 @@ TEST("stopping the transport fades the sound out within 20 ms") {
 
 TEST("MIDI notes play the pads at the right moment") {
     auto l = loadCase(4);
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(l);
     int note = -1, track = -1;
@@ -184,7 +193,8 @@ TEST("MIDI notes play the pads at the right moment") {
     CHECK(energy(tb[2 * track]) > 0, "and comes out of its track's output");
     in.note = (note + 1) % 128;
     while (l->model.noteMap[in.note] >= 0) in.note = (in.note + 1) % 128;
-    Player q;
+    auto qOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& q = *qOwned;
     q.prepare(kRate);
     q.setLoaded(l);
     q.process(Transport{}, 512, &in, 1, L.data(), R.data(), nullptr);
@@ -195,7 +205,10 @@ TEST("mute and volume act on a track's output and the mix") {
     auto l = loadCase(5);
     const double bpm = 120;
     auto ppq = [&](double s) { return s * bpm / 60; };
-    Player a, b;
+    auto aOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& a = *aOwned;
+    auto bOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& b = *bOwned;
     for (auto* p : {&a, &b}) {
         p->prepare(kRate);
         p->setLoaded(l);
@@ -203,7 +216,8 @@ TEST("mute and volume act on a track's output and the mix") {
     }
     int loud = -1;
     {
-        Player probe;
+        auto probeOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+        auto& probe = *probeOwned;
         probe.prepare(kRate);
         probe.setLoaded(l);
         probe.pattern = 0;
@@ -216,7 +230,8 @@ TEST("mute and volume act on a track's output and the mix") {
     Run x = play(a, 2.0, bpm, ppq), y = play(b, 2.0, bpm, ppq);
     CHECK(energy(x.tracks[2 * loud]) > 0 && energy(y.tracks[2 * loud]) == 0, "the muted track's output is silent");
     CHECK(energy(y.left) < energy(x.left), "and the mix is quieter");
-    Player c;
+    auto cOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& c = *cOwned;
     c.prepare(kRate);
     c.setLoaded(l);
     c.pattern = 0;
@@ -228,7 +243,8 @@ TEST("mute and volume act on a track's output and the mix") {
 
 TEST("preview plays on its own clock at the beat's tempo while the host is stopped") {
     auto l = loadCase(6);
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(l);
     p.pattern = 0;
@@ -242,7 +258,8 @@ TEST("preview plays on its own clock at the beat's tempo while the host is stopp
 
 TEST("the beat can be swapped while it plays, and the old one is freed") {
     auto a = loadCase(7), b = loadCase(8);
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(a);
     std::weak_ptr<const Loaded> weakA = a;
@@ -263,7 +280,8 @@ TEST("the beat can be swapped while it plays, and the old one is freed") {
 TEST("song mode follows the host through the song") {
     auto l = loadCase(9);
     const double bpm = 120;
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(l);
     p.songMode = true;
@@ -279,7 +297,8 @@ TEST("song mode follows the host through the song") {
 TEST("choosing another pattern while playing switches at the next bar line") {
     auto l = loadCase(10);
     const double bpm = 120;
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(l);
     p.pattern = 0;
@@ -303,7 +322,8 @@ TEST("choosing another pattern while playing switches at the next bar line") {
 
 TEST("track meters move even when the host takes no track outputs") {
     auto l = loadCase(11);
-    Player p;
+    auto pOwned = std::make_unique<Player>();  // on the heap: Windows threads have 1 MB stacks
+    auto& p = *pOwned;
     p.prepare(kRate);
     p.setLoaded(l);
     std::vector<float> L(512), R(512);
