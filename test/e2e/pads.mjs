@@ -235,6 +235,31 @@ export async function run(t) {
     });
     await sleep(300);
     t.check('plugging it back in uses it again', (await win.evaluate(() => window.__sinkCalls.at(-1))) === 'hp-2', await win.evaluate(() => window.__sinkCalls.join()));
+
+    // Unplugged and plugged back in while playing: playback carries on through each change.
+    await win.evaluate(() => document.activeElement?.blur());
+    await win.keyboard.press('Space');
+    await sleep(800);
+    const cycleAt = () => win.evaluate(() => window.__engine.patternCycle());
+    const start = await cycleAt();
+    await win.evaluate(() => {
+      window.__fakeOutputs = window.__fakeOutputs.filter((d) => d.deviceId !== 'hp-2');
+      navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
+    });
+    await sleep(1000);
+    const unplugged = await win.evaluate(() => ({ playing: window.__engine.isPlaying, sink: window.__sinkCalls.at(-1) }));
+    const during = await cycleAt();
+    t.check('unplugging the sound card while playing moves to the default and keeps playing', unplugged.playing && unplugged.sink === '' && during > start + 0.3, { ...unplugged, start, during });
+    await win.evaluate(() => {
+      window.__fakeOutputs.push({ deviceId: 'hp-2', label: 'Headphones' });
+      navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
+    });
+    await sleep(1000);
+    const back = await win.evaluate(() => ({ playing: window.__engine.isPlaying, sink: window.__sinkCalls.at(-1) }));
+    const later = await cycleAt();
+    t.check('plugging it back in while playing moves back and keeps playing', back.playing && back.sink === 'hp-2' && later > during + 0.3, { ...back, during, later });
+    await win.keyboard.press('Space');
+    await sleep(300);
     await win.click('button.settings-btn');
     await win.selectOption('select[aria-label="Sound output"]', '');
     await sleep(200);

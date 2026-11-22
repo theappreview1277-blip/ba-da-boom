@@ -55,6 +55,18 @@ export async function run(t) {
     ({ app, win, pageErrors } = await launchApp(profile));
     t.check('the open tab is remembered after a restart', await win.isVisible('.smart'));
 
+    // A click redraws only the row it changed, not all 16.
+    await win.click('[data-cell="t1:1"]');
+    await sleep(100);
+    await win.evaluate(() => (window.__rowRenders = {}));
+    await win.click('[data-cell="t1:2"]');
+    await sleep(100);
+    const renders = await win.evaluate(() => window.__rowRenders);
+    await win.evaluate(() => delete window.__rowRenders);
+    t.check('a grid click redraws only the row it changed', Object.keys(renders).join() === 't1' && renders.t1 <= 2, renders);
+    await undo();
+    await undo();
+
     // 2. Track colours.
     for (const c of ['t1:1', 't3:1']) await win.click(`[data-cell="${c}"]`);
     const colours = await win.evaluate(() => ['t1:1', 't3:1'].map((c) => getComputedStyle(document.querySelector(`[data-cell="${c}"]`)).backgroundColor));
