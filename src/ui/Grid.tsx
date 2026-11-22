@@ -222,6 +222,9 @@ interface RowProps extends Pick<GridProps, 'onSelect' | 'onTrack' | 'onLength' |
 
 const Row = memo(function Row(props: RowProps) {
   const { index, track, lane, start, steps, selected, selectedStep, status, sampleName } = props;
+  // Tests count row renders to check a click only redraws the row it changed.
+  const counts = (window as any).__rowRenders as Record<string, number> | undefined;
+  if (counts) counts[track.id] = (counts[track.id] ?? 0) + 1;
   const missing = status === 'missing' && track.sound.source === 'sample';
   return (
     <div
