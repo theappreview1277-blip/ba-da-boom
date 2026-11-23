@@ -56,5 +56,5 @@ imported sounds play in both.
 
 ## Not in the plugin yet
 
-Delay and reverb, sample folders and kit downloads in the screen. These come in the next
-plugin update. (Synth tracks and every other effect play as they do in the app.)
+Sample folders and kit downloads in the screen. These come in the next plugin update.
+(Synth tracks, every effect, delay and reverb play as they do in the app.)

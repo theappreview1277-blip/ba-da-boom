@@ -15,6 +15,7 @@ import {
   getAudioContext,
   getSuperdoughAudioController,
   initAudio,
+  reverbsReady,
   setAudioContext,
   setMaxPolyphony,
   setSuperdoughAudioController,
@@ -91,6 +92,8 @@ export async function renderPattern(project: Project, opts: ExportOptions): Prom
       await superdough({ ...hap.value }, begin / cps, hap.duration.valueOf() / cps, cps, begin);
       events++;
     }
+    // Reverbs make their impulse responses asynchronously; render once they have them.
+    await reverbsReady(offline);
     rendered = await offline.startRendering();
     // Superdough's cleanup callbacks for offline voices use the global context,
     // so let them run before switching back to the live one.

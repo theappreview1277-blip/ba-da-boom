@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "convolver.h"
 #include "dsp.h"
 #include "oscillator.h"
 #include "play_model.h"
@@ -30,6 +31,11 @@ struct SampleSet {
      * worklet's `begin`), the way the tests seed the app's worklet, instead of from the running sequence.
      */
     bool supersawPhasesFromStart = false;
+    /**
+     * Tests: the noise for each reverb in the order they are made (stereo, already decayed and faded in,
+     * as reverbGen.mjs makes it before its low-pass), instead of the engine's own.
+     */
+    std::vector<std::shared_ptr<const SampleData>> reverbNoise;
     const SampleData* find(const std::string& key, bool reverse) const {
         auto& m = reverse ? reversedSounds : sounds;
         auto it = m.find(key);
@@ -89,6 +95,27 @@ struct Voice {
     Biquad phaserNotch;
     double phaserFreq = 0, phaserQ = 1;
     Lfo phaserLfo;
+    // Sends to the track's (orbit's) delay and reverb, from the voice's output.
+    float delaySend = 0, roomSend = 0;
+};
+
+/**
+ * One track's orbit effects (superdoughoutput.mjs Orbit): the feedback delay (feedbackdelay.mjs) and
+ * the reverb (reverb.mjs), each made at the track's first sound that sends to it.
+ */
+struct OrbitBus {
+    bool delayOn = false, reverbOn = false;
+    // Chromium's DelayNode with its output fed back through a gain: in a cycle the feedback comes
+    // a render quantum (128 frames) late, so the loop is delayTime + 128 frames.
+    float delayTime = 0, feedback = 0;          // in effect
+    float nextDelayTime = 0, nextFeedback = 0;  // from `changeAt` on
+    double changeAt = -1;
+    std::array<std::vector<float>, 2> line;     // the delay's input, a ring
+    std::array<std::array<float, 128>, 2> lastOut{};  // its output over the last quantum
+    long long written = 0;
+    std::array<Convolver, 2> reverb;
+    bool ownIr = false;  // a response of its own (the tests'), so never the shared reverb
+    long long reverbRinging = 0;  // frames its own reverb still rings with no new sends
 };
 
 class Engine {
@@ -122,6 +149,8 @@ public:
 private:
     Voice* allocate(double time);
     void setEffects(Voice& v, const Controls& c, const Hit& h, double t, double endWithRelease, double cps);
+    void setSends(Voice& v, const Controls& c, const SampleSet& set, double t);
+    void renderChunk(double time, int frames, int offset, int total, float* mixL, float* mixR, float* const* tracks);
     void effects(Voice& v, long long frame, bool mono, float& l, float& r);
     double sr_ = 44100;
     std::array<Voice, kMaxVoices> voices_{};
@@ -134,10 +163,23 @@ private:
     std::array<SampleData, 4> crackle_;
     long long crackles_ = 0;  // crackle sounds started so far
     std::vector<float> kickCurve_;  // synth.mjs makeSaturationCurve(2, sampleRate)
+    // The tracks' delay and reverb, and what the voices send them in the chunk being rendered.
+    static constexpr int kChunk = 256;
+    std::array<OrbitBus, kMaxTracks> buses_;
+    std::array<std::array<std::array<float, kChunk>, 4>, kMaxTracks> sends_{};  // delay L, R, reverb L, R
+    std::array<std::shared_ptr<const ConvolverIr>, 2> reverbIr_;  // the engine's own reverb (both channels)
+    // Tracks whose sound only reaches the mix share one reverb: every track's reverb has the same
+    // response here, so one convolution of the summed sends sounds the same as one per track.
+    std::array<Convolver, 2> sharedReverb_;
+    std::array<std::array<float, kChunk>, 2> sharedSend_{};
+    long long sharedRinging_ = 0;  // frames the shared reverb still rings with no new sends
+    std::array<bool, kMaxTracks> sentReverb_{};  // a voice sent to the track's reverb in this chunk
+    int reverbsMade_ = 0;
     uint64_t random_ = 0x9e3779b97f4a7c15ull;     // for the noise buffers
     uint64_t sawRandom_ = 0x2545f4914f6cdd1dull;  // for the supersaw voices' phases
     static double random(uint64_t& state);         // 0..1, like Math.random (splitmix64)
     double random() { return random(random_); }
+    std::vector<std::vector<float>> reverbGenNoise();
     const SampleData* noiseBuffer(const SampleSet& set, int type) const {
         const auto& given = set.noise[static_cast<size_t>(type)];
         return given && given->frames() ? given.get() : &noise_[static_cast<size_t>(type)];

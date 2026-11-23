@@ -50,6 +50,35 @@ void paramAdsr(ParamTimeline& p, Adsr e, double min, double max, double begin, d
     }
     ramp(min, end + e.r);
 }
+// reverbGen.mjs applyGradualLowpass, then Chromium's ConvolverNode normalisation (reverb.cc
+// CalculateNormalizationScale): a 15 kHz low-pass falling to 1 kHz over the decay time.
+std::array<std::shared_ptr<const ConvolverIr>, 2> reverbIr(const std::vector<std::vector<float>>& noise, double sr) {
+    const double decayTime = 2;
+    std::array<std::vector<float>, 2> filtered;
+    ParamTimeline freq(0);
+    freq.setValueAtTime(std::min(15000.0, sr / 2), 0);
+    freq.linearRampToValueAtTime(std::min(1000.0, sr / 2), decayTime);
+    float power = 0;
+    for (size_t ch = 0; ch < 2; ch++) {
+        const auto& in = noise[std::min(ch, noise.size() - 1)];
+        auto& out = filtered[ch];
+        out.resize(in.size());
+        Biquad lp;
+        for (size_t i = 0; i < in.size(); i++) {
+            lp.set(Biquad::Lowpass, static_cast<float>(freq.valueAt(static_cast<double>(i) / sr)), 0.0001, sr);
+            out[i] = lp.process(in[i], 0);
+        }
+        for (float x : out) power += x * x;
+    }
+    const size_t length = filtered[0].size();
+    power = std::sqrt(power / static_cast<float>(2 * length));
+    if (!std::isfinite(power) || power < 0.000125f) power = 0.000125f;
+    float scale = 1 / power;
+    scale *= std::pow(10.0f, -58 * 0.05f);
+    scale *= 44100.0f / static_cast<float>(sr);
+    return {ConvolverIr::make(filtered[0].data(), length, scale), ConvolverIr::make(filtered[1].data(), length, scale)};
+}
+
 // worklets.mjs waveshapes.sawblep: a saw with polyBLEP smoothing at the jump.
 double sawBlep(double phase, double dt) {
     dt = std::min(dt, 1 - dt);
@@ -106,10 +135,38 @@ void Engine::prepare(double sampleRate) {
         const double probability = 0.02 * 0.01;  // density 0.02
         for (size_t i = 0; i < size; i++) d[i] = random() < probability ? static_cast<float>(random() * 2 - 1) : 0.0f;
     }
+    // The tracks' delay lines (up to the DelayNode's 1 second) and reverbs (superdough's 2-second room).
+    reverbIr_ = reverbIr(reverbGenNoise(), sr_);
+    for (auto& b : buses_) {
+        for (auto& line : b.line) line.assign(static_cast<size_t>(sr_) + 256, 0.f);
+        for (size_t ch = 0; ch < 2; ch++) {
+            b.reverb[ch].prepare(reverbIr_[ch]->length);
+            b.reverb[ch].setIr(reverbIr_[ch]);
+        }
+    }
+    for (size_t ch = 0; ch < 2; ch++) {
+        sharedReverb_[ch].prepare(reverbIr_[ch]->length);
+        sharedReverb_[ch].setIr(reverbIr_[ch]);
+    }
     // synth.mjs makeSaturationCurve(2, sampleRate) for the synth kick's shaper.
     kickCurve_.resize(static_cast<size_t>(sr_));
     for (size_t i = 0; i < kickCurve_.size(); i++) kickCurve_[i] = static_cast<float>(std::tanh((i * 2.0 / kickCurve_.size() - 1) * 2));
     clear();
+}
+
+// reverbGen.mjs generateReverb: 3 seconds of stereo noise falling 60 dB over 2, faded in over 0.1.
+std::vector<std::vector<float>> Engine::reverbGenNoise() {
+    const double decayTime = 2, fadeIn = 0.1;
+    const auto decayFrames = static_cast<double>(std::llround(decayTime * sr_));
+    const auto frames = static_cast<size_t>(std::llround(decayTime * 1.5 * sr_));
+    const auto fadeFrames = static_cast<size_t>(std::llround(fadeIn * sr_));
+    const double decayBase = std::pow(1.0 / 1000, 1 / decayFrames);
+    std::vector<std::vector<float>> noise(2, std::vector<float>(frames));
+    for (auto& ch : noise) {
+        for (size_t j = 0; j < frames; j++) ch[j] = static_cast<float>((random() * 2 - 1) * std::pow(decayBase, static_cast<double>(j)));
+        for (size_t j = 0; j < fadeFrames; j++) ch[j] = static_cast<float>(ch[j] * (static_cast<double>(j) / static_cast<double>(fadeFrames)));
+    }
+    return noise;
 }
 
 double Engine::random(uint64_t& state) {
@@ -123,6 +180,22 @@ double Engine::random(uint64_t& state) {
 void Engine::clear() {
     for (auto& v : voices_) v.active = false;
     cutGroups_.fill(nullptr);
+    for (auto& b : buses_) {
+        b.delayOn = b.reverbOn = false;
+        b.changeAt = -1;
+        for (auto& line : b.line) std::fill(line.begin(), line.end(), 0.f);
+        for (auto& o : b.lastOut) o.fill(0);
+        b.written = 0;
+        for (size_t ch = 0; ch < 2; ch++) {
+            if (b.ownIr) b.reverb[ch].setIr(reverbIr_[ch]);
+            b.reverb[ch].reset();
+        }
+        b.ownIr = false;
+        b.reverbRinging = 0;
+    }
+    for (auto& c : sharedReverb_) c.reset();
+    sharedRinging_ = 0;
+    reverbsMade_ = 0;
 }
 
 int Engine::activeVoices() const {
@@ -309,6 +382,41 @@ void Engine::trigger(const PlayModel& m, const SampleSet& set, const Hit& h, dou
     }
     // superdough.mjs: endWithRelease = end + release (0.01 when not set).
     setEffects(*v, c, h, t, end + (c.release >= 0 ? c.release : 0.01), cps);
+    setSends(*v, c, set, t);
+}
+
+// superdough.mjs: the orbit's delay and reverb sends, made with the first sound that uses them.
+void Engine::setSends(Voice& v, const Controls& c, const SampleSet& set, double t) {
+    if (v.track < 0 || v.track >= kMaxTracks) return;
+    OrbitBus& b = buses_[static_cast<size_t>(v.track)];
+    if (c.delay > 0 && c.delaytime > 0 && c.delayfeedback > 0) {
+        // Orbit.getDelay: feedback clamped to 0.98; the DelayNode's delayTime to its 1-second maximum.
+        const auto time = static_cast<float>(std::min(c.delaytime, 1.0));
+        const auto feedback = static_cast<float>(std::clamp(c.delayfeedback, 0.0, 0.98));
+        if (!b.delayOn) {
+            b.delayOn = true;
+            b.delayTime = time;
+            b.feedback = feedback;
+            b.changeAt = -1;
+        } else if (time != b.delayTime || feedback != b.feedback) {
+            b.nextDelayTime = time;
+            b.nextFeedback = feedback;
+            b.changeAt = t;
+        }
+        v.delaySend = static_cast<float>(c.delay);
+    }
+    if (c.room > 0) {
+        if (!b.reverbOn) {
+            b.reverbOn = true;
+            const auto k = static_cast<size_t>(reverbsMade_++);
+            if (k < set.reverbNoise.size() && set.reverbNoise[k]) {
+                const auto ir = reverbIr(set.reverbNoise[k]->data, sr_);
+                for (size_t ch = 0; ch < 2; ch++) b.reverb[ch].setIr(ir[ch]);
+                b.ownIr = true;
+            }
+        }
+        v.roomSend = static_cast<float>(c.room);
+    }
 }
 
 namespace {
@@ -421,6 +529,24 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
             for (int i = 0; i < 2 * kMaxTracks; i++)
                 if (tracks[i]) tracks[i][f] = 0;
     }
+    for (int offset = 0; offset < frames; offset += kChunk)
+        renderChunk(time, std::min(kChunk, frames - offset), offset, frames, mixL, mixR, tracks);
+    trackGainDone_ = trackGain_;
+    for (int f = 0; f < frames; f++) {
+        const float l = static_cast<float>(mixL[f] * masterVolume), r = static_cast<float>(mixR[f] * masterVolume);
+        mixL[f] = clip ? clipper_.process(l) : l;
+        mixR[f] = clip ? clipper_.process(r) : r;
+    }
+}
+
+// Frames [offset, offset + frames) of a render of `total` frames from `time`.
+void Engine::renderChunk(double time, int frames, int offset, int total, float* mixL, float* mixR, float* const* tracks) {
+    for (int t = 0; t < kMaxTracks; t++)
+        if (buses_[t].delayOn || buses_[t].reverbOn)
+            for (auto& ch : sends_[t]) std::fill(ch.begin(), ch.begin() + frames, 0.f);
+    sentReverb_.fill(false);
+    mixL += offset;
+    mixR += offset;
     for (auto& v : voices_) {
         if (!v.active) continue;
         const SampleData* sp = v.sample;
@@ -432,11 +558,14 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
         const float* c0 = sp ? sp->data[0].data() : nullptr;
         const float* c1 = mono || !sp ? c0 : sp->data[1].data();
         const int ti = v.track < kMaxTracks ? v.track : 0;
-        const double g0 = trackGainDone_[ti], gStep = (trackGain_[ti] - g0) / frames;
-        float* tl = tracks && v.track < kMaxTracks ? tracks[2 * v.track] : nullptr;
-        float* tr = tracks && v.track < kMaxTracks ? tracks[2 * v.track + 1] : nullptr;
+        const double gStep = (trackGain_[ti] - trackGainDone_[ti]) / total, g0 = trackGainDone_[ti] + gStep * offset;
+        float* tl = tracks && v.track < kMaxTracks && tracks[2 * v.track] ? tracks[2 * v.track] + offset : nullptr;
+        float* tr = tracks && v.track < kMaxTracks && tracks[2 * v.track + 1] ? tracks[2 * v.track + 1] + offset : nullptr;
+        auto& send = sends_[static_cast<size_t>(ti)];
+        const bool sends = v.track < kMaxTracks && (v.delaySend > 0 || v.roomSend > 0);
+        if (sends && v.roomSend > 0) sentReverb_[static_cast<size_t>(ti)] = true;
         for (int f = 0; f < frames; f++) {
-            const double tt = time + f / sr_;
+            const double tt = time + (offset + f) / sr_;
             if (tt < v.start) continue;
             if (tt >= v.stopAt) {
                 v.active = false;
@@ -567,6 +696,12 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
             const auto tg = static_cast<float>(g0 + gStep * f);
             ol *= tg;
             orr *= tg;
+            if (sends) {
+                send[0][f] += ol * v.delaySend;
+                send[1][f] += orr * v.delaySend;
+                send[2][f] += ol * v.roomSend;
+                send[3][f] += orr * v.roomSend;
+            }
             peaks_[ti] = std::max(peaks_[ti], std::max(std::abs(ol), std::abs(orr)));
             mixL[f] += ol;
             mixR[f] += orr;
@@ -574,11 +709,81 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
             if (tr) tr[f] += orr;
         }
     }
-    trackGainDone_ = trackGain_;
-    for (int f = 0; f < frames; f++) {
-        const float l = static_cast<float>(mixL[f] * masterVolume), r = static_cast<float>(mixR[f] * masterVolume);
-        mixL[f] = clip ? clipper_.process(l) : l;
-        mixR[f] = clip ? clipper_.process(r) : r;
+
+    // The tracks' delay and reverb returns, into the track's output and the mix.
+    bool shared = false;
+    for (int t = 0; t < kMaxTracks; t++) {
+        OrbitBus& b = buses_[static_cast<size_t>(t)];
+        if (!b.delayOn && !b.reverbOn) continue;
+        const auto& send = sends_[static_cast<size_t>(t)];
+        float* tl = tracks ? tracks[2 * t] : nullptr;
+        float* tr = tracks ? tracks[2 * t + 1] : nullptr;
+        const long long ringFrames = static_cast<long long>(reverbIr_[0]->length) + ConvolverIr::kBlock2;
+        const bool sent = sentReverb_[static_cast<size_t>(t)];
+        bool ownReverb = false;
+        if (b.reverbOn && (b.ownIr || tl || tr)) {
+            b.reverbRinging = sent ? ringFrames : b.reverbRinging - frames;
+            ownReverb = b.reverbRinging > 0;
+        } else if (b.reverbOn && sent) {
+            if (!shared) {
+                for (auto& ch : sharedSend_) std::fill(ch.begin(), ch.begin() + frames, 0.f);
+                shared = true;
+            }
+            for (int f = 0; f < frames; f++) {
+                sharedSend_[0][static_cast<size_t>(f)] += send[2][static_cast<size_t>(f)];
+                sharedSend_[1][static_cast<size_t>(f)] += send[3][static_cast<size_t>(f)];
+            }
+        }
+        if (!b.delayOn && !ownReverb) continue;
+        for (int f = 0; f < frames; f++) {
+            float l = 0, r = 0;
+            if (b.delayOn) {
+                const double tt = time + (offset + f) / sr_;
+                if (b.changeAt >= 0 && tt >= b.changeAt) {
+                    b.delayTime = b.nextDelayTime;
+                    b.feedback = b.nextFeedback;
+                    b.changeAt = -1;
+                }
+                const size_t size = b.line[0].size();
+                const auto w = static_cast<size_t>(b.written % static_cast<long long>(size));
+                const auto q = static_cast<size_t>(b.written % 128);
+                // AudioDelayDSPKernel: read delayTime * sampleRate frames back, linearly interpolated.
+                double rp = static_cast<double>(w) + static_cast<double>(size) - static_cast<double>(b.delayTime) * sr_;
+                if (rp >= static_cast<double>(size)) rp -= static_cast<double>(size);
+                const auto i1 = static_cast<size_t>(rp);
+                const size_t i2 = i1 + 1 < size ? i1 + 1 : 0;
+                const double fr = rp - static_cast<double>(i1);
+                float y[2];
+                for (int ch = 0; ch < 2; ch++) {
+                    auto& line = b.line[static_cast<size_t>(ch)];
+                    line[w] = send[static_cast<size_t>(ch)][f] + b.feedback * b.lastOut[static_cast<size_t>(ch)][q];
+                    y[ch] = static_cast<float>((1 - fr) * line[i1] + fr * line[i2]);
+                    b.lastOut[static_cast<size_t>(ch)][q] = y[ch];
+                }
+                b.written++;
+                l += y[0];
+                r += y[1];
+            }
+            if (ownReverb) {
+                l += b.reverb[0].process(send[2][f]);
+                r += b.reverb[1].process(send[3][f]);
+            }
+            peaks_[static_cast<size_t>(t)] = std::max(peaks_[static_cast<size_t>(t)], std::max(std::abs(l), std::abs(r)));
+            mixL[f] += l;
+            mixR[f] += r;
+            if (tl) tl[offset + f] += l;
+            if (tr) tr[offset + f] += r;
+        }
+    }
+    // The shared reverb runs on while it rings, so a track that stops sending still decays.
+    sharedRinging_ = shared ? static_cast<long long>(reverbIr_[0]->length) + ConvolverIr::kBlock2 : sharedRinging_ - frames;
+    if (sharedRinging_ > 0) {
+        if (!shared)
+            for (auto& ch : sharedSend_) std::fill(ch.begin(), ch.begin() + frames, 0.f);
+        for (int f = 0; f < frames; f++) {
+            mixL[f] += sharedReverb_[0].process(sharedSend_[0][static_cast<size_t>(f)]);
+            mixR[f] += sharedReverb_[1].process(sharedSend_[1][static_cast<size_t>(f)]);
+        }
     }
 }
 

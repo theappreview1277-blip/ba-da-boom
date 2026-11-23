@@ -48,8 +48,8 @@ int main(int argc, char** argv) {
         std::vector<std::string> missing;
         bdb::SampleSet set = bdb::loadSamples(m, {argv[2], argv[3]}, rate, &missing);
         for (auto& k : missing) std::fprintf(stderr, "missing sound %s\n", k.c_str());
-        // BDB_NOISE=<folder>: the app's noise buffers as raw 32-bit floats: white.f32, pink.f32, brown.f32
-        // and crackle0.f32, crackle1.f32, ... (one for each crackle sound, in order).
+        // BDB_NOISE=<folder>: the app's noise buffers as raw 32-bit floats: white.f32, pink.f32, brown.f32,
+        // crackle0.f32, crackle1.f32, ... (one for each crackle sound, in order) and reverb0.f32, ...
         if (const char* dir = std::getenv("BDB_NOISE")) {
             auto load = [&](const std::string& name) -> std::shared_ptr<const bdb::SampleData> {
                 std::ifstream nf(std::string(dir) + "/" + name + ".f32", std::ios::binary);
@@ -64,6 +64,16 @@ int main(int argc, char** argv) {
             const char* names[] = {"white", "pink", "brown"};
             for (size_t i = 0; i < 3; i++) set.noise[i] = load(names[i]);
             while (auto d = load("crackle" + std::to_string(set.crackles.size()))) set.crackles.push_back(d);
+            // reverb0.f32, reverb1.f32, ...: each reverb's noise, left channel then right.
+            while (auto d = load("reverb" + std::to_string(set.reverbNoise.size()))) {
+                auto two = std::make_shared<bdb::SampleData>();
+                const size_t half = d->frames() / 2;
+                two->channels = 2;
+                two->rate = rate;
+                two->data = {std::vector<float>(d->data[0].begin(), d->data[0].begin() + static_cast<long>(half)),
+                             std::vector<float>(d->data[0].begin() + static_cast<long>(half), d->data[0].end())};
+                set.reverbNoise.push_back(two);
+            }
         }
         // BDB_SAW_PHASES_FROM_START=1: supersaw phases seeded from each sound's start (the tests seed the app the same way).
         if (const char* e = std::getenv("BDB_SAW_PHASES_FROM_START")) set.supersawPhasesFromStart = std::strcmp(e, "1") == 0;
