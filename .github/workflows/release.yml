@@ -33,6 +33,19 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run kits
+      # The VST3 and CLAP plugins go into the installer, which copies them to the plugin folders.
+      - name: WebView2 SDK (for the plugin's screen)
+        shell: bash
+        run: nuget install Microsoft.Web.WebView2 -Version 1.0.2903.40 -OutputDirectory "$RUNNER_TEMP/nuget"
+      - name: Build the plugins
+        shell: bash
+        run: |
+          cmake -S plugin -B plugin/build -A x64 -DBDB_TESTS=OFF -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$RUNNER_TEMP/nuget"
+          cmake --build plugin/build --config Release --parallel --target Badaboom_VST3 Badaboom_CLAP
+          mkdir -p plugin-dist
+          cp -r plugin/build/Badaboom_artefacts/Release/VST3/Ba-da-boom.vst3 plugin-dist/
+          cp plugin/build/Badaboom_artefacts/Release/CLAP/Ba-da-boom.clap plugin-dist/
+          ls -R plugin-dist | head -20
       # electron-builder only builds; the release is made here in one step, because its own
       # publisher uploaded the files in parallel and raced itself creating the release.
       - name: Build the installer

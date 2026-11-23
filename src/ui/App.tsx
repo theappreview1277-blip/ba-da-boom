@@ -45,6 +45,9 @@ import { useShortcuts } from './useShortcuts';
 import { TopBar } from './TopBar';
 import { PatternBar } from './PatternBar';
 import { ToolPanel } from './ToolPanel';
+import { playModel } from '../plugin/playModel';
+import { inPlugin } from '../plugin/bridge';
+import { PluginEngine } from '../plugin/pluginEngine';
 import { AboutDialog, Dialog, ExportDialog, KeysDialog, RecoverDialog, RemovePatternDialog, UnsavedDialog, WelcomeDialog, type ExportPrefs, type Modal } from './Dialogs';
 
 /** Width of the sample list when folded away. */
@@ -110,7 +113,8 @@ export function App() {
 
   // --- audio engine lifecycle ---
   useEffect(() => {
-    const engine = new AudioEngine(sampleUrl);
+    // Inside the plugin, the plugin's own engine plays the beat in the host's time.
+    const engine = inPlugin ? new PluginEngine(sampleUrl) : new AudioEngine(sampleUrl);
     engine.onSampleStatus = () => setStatusTick((n) => n + 1);
     engine.onError = (m) => fail(`Playback error: ${m}`);
     engineRef.current = engine;
@@ -126,7 +130,7 @@ export function App() {
         desktop.log('error', `Audio engine failed to start: ${e?.stack ?? e}`).catch(() => {});
       });
     // For automated tests and diagnostics.
-    Object.assign(window as any, { __engine: engine, __bdb: { renderPattern, encodeWav24, parseProject, serializeProject } });
+    Object.assign(window as any, { __engine: engine, __bdb: { renderPattern, encodeWav24, parseProject, serializeProject, playModel } });
   }, [fail]);
 
   useEffect(() => {
@@ -277,6 +281,14 @@ export function App() {
   const laneKind: LaneKind = layout.lane ?? 'velocity';
 
   const live = useLive(ctx, project, { engineReady, playing, setPlaying, tool, toolsOpen });
+  // The plugin needs the MIDI notes setting to know which note plays which pad.
+  useEffect(() => {
+    const e = engineRef.current;
+    if (e instanceof PluginEngine && e.midiMap !== (live.sound.midiMap ?? 'gm')) {
+      e.midiMap = live.sound.midiMap ?? 'gm';
+      e.resend();
+    }
+  }, [live.sound.midiMap, engineReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     desktop.settingsGet().then((s) => {

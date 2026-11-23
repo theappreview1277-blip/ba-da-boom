@@ -1,5 +1,6 @@
 // Project files: open, save, new, the "save changes?" guard, autosave and crash recovery,
 // and project files handed over by Windows (double-click).
+import { allowSending, call, inPlugin, onProjectReplaced } from '../plugin/bridge';
 import { useCallback, useEffect, useRef } from 'react';
 import { newProject } from '../model/defaults';
 import { parseProject, serializeProject } from '../model/serialize';
@@ -109,6 +110,21 @@ export function useFiles(ctx: AppCtx, opts: FileOptions) {
   );
 
   // --- autosave and recovery, and project files opened from Windows ---
+  // Inside the plugin the project lives in the host's project: load it when the screen opens,
+  // and again when the host loads another one.
+  useEffect(() => {
+    if (!inPlugin) return;
+    const fromPlugin = () =>
+      call<{ project: string | null }>('getState')
+        .then((s) => {
+          if (s.project) loadText(s.project, null, true);
+          allowSending(!!s.project);
+        })
+        .catch((e) => fail(String(e?.message ?? e)));
+    void fromPlugin();
+    return onProjectReplaced(() => void fromPlugin()) as () => void;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     Promise.all([desktop.autosaveRecover(), desktop.launchFile().catch(() => null), desktop.settingsGet().catch(() => null)]).then(([r, launch, settings]) => {
       // Unsaved work from a crash comes first; the file opens if the user starts fresh.

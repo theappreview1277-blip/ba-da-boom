@@ -4,6 +4,7 @@
 
 import type { DesktopApi, OpenResult, Settings } from '../main/ipc';
 import type { SampleRef } from '../model/types';
+import { inPlugin, pluginApi } from '../plugin/bridge';
 
 declare global {
   interface Window {
@@ -104,11 +105,13 @@ const browserApi: DesktopApi = {
   async updateInstall() {},
 };
 
-export const desktop: DesktopApi = window.bdb ?? browserApi;
+// Inside the VST3 / CLAP plugin the plugin provides the services.
+export const desktop: DesktopApi = window.bdb ?? (inPlugin ? pluginApi : browserApi);
 export const inElectron = !!window.bdb;
 
 export function sampleUrl(ref: SampleRef): string {
   if (ref.source === 'factory') return new URL(`samples/${ref.file}`, document.baseURI).toString();
   if (inElectron) return `bdb://app/pool/${encodeURIComponent(ref.file)}`;
+  if (inPlugin) return new URL(`pool/${encodeURIComponent(ref.file)}`, document.baseURI).toString();
   return blobUrls.get(ref.file) ?? `missing://${ref.file}`;
 }

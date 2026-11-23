@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 dist-electron/
 release/
@@ -9,3 +9,5 @@ test/e2e/timing-result.txt
 build/*.ico
 test-results/
 resources/kits/
+plugin-dist/
+plugin/build/
