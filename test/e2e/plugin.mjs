@@ -51,6 +51,12 @@ const CASES = [
   ['release', { 0: { release: 0.05 }, 1: { release: 0.3 }, 2: { release: 0.01, attack: 0.01 } }],
   ['choke groups', { 0: { choke: 1 }, 1: { choke: 1 }, 2: { choke: 2 }, 3: { choke: 2 } }],
   ['loud enough to hit the clipper', { 0: { volume: 1.5 }, 1: { volume: 1.5 }, 2: { volume: 1.5 }, 3: { volume: 1.5 } }],
+  ['vowels', { 0: { vowel: 'a' }, 1: { vowel: 'o' }, 2: { vowel: 'i' }, 3: { vowel: 'e' } }],
+  ['coarse and crush', { 0: { coarse: 4 }, 1: { crush: 4 }, 2: { coarse: 8, crush: 6 } }],
+  ['shape and drive', { 0: { shape: 0.6 }, 1: { drive: 2 }, 2: { shape: 0.95, drive: 0.5 } }],
+  ['tremolo', { 0: { tremoloRate: 8, tremoloDepth: 0.8 }, 1: { tremoloRate: 3, tremoloDepth: 1 }, 2: { tremoloRate: 16, tremoloDepth: 0.4 } }],
+  ['phaser', { 0: { phaserRate: 2, phaserDepth: 0.75 }, 1: { phaserRate: 0.5, phaserDepth: 0.3 }, 2: { phaserRate: 6, phaserDepth: 1 } }],
+  ['effects together', { 0: { lowpass: 2000, vowel: 'u', crush: 8, shape: 0.4, tremoloRate: 4, tremoloDepth: 0.5, phaserRate: 1 }, 1: { highpass: 400, drive: 1, coarse: 2, pan: -0.5 } }],
 ];
 
 function readFloatWav(path) {

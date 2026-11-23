@@ -46,6 +46,22 @@ struct Voice {
     std::array<Biquad, 2> lp, hp, bp;
     double lpQ = 1, hpQ = 1, bpQ = 1, hpFreq = 0, bpFreq = 0;
     ParamTimeline lpFreq;
+    // Effects, in superdough's order after the filters.
+    int vowelCount = 0;
+    std::array<Biquad, 5> vowel;
+    std::array<double, 5> vowelGain{};
+    double coarse = 0;               // > 0: hold every coarse-th frame of each render quantum
+    float holdL = 0, holdR = 0;
+    double crush = 0;                // > 0: bits
+    double shape = -1;               // >= 0: shape amount, already mapped
+    double distort = -1;             // >= 0: k for the s-curve
+    bool tremolo = false;
+    double tremoloBase = 0;          // the AM gain without the LFO
+    Lfo tremoloLfo;
+    bool phaser = false;
+    Biquad phaserNotch;
+    double phaserFreq = 0, phaserQ = 1;
+    Lfo phaserLfo;
 };
 
 class Engine {
@@ -78,6 +94,8 @@ public:
 
 private:
     Voice* allocate(double time);
+    void setEffects(Voice& v, const Controls& c, const Hit& h, double t, double endWithRelease, double cps);
+    void effects(Voice& v, long long frame, bool mono, float& l, float& r);
     double sr_ = 44100;
     std::array<Voice, kMaxVoices> voices_{};
     std::array<Voice*, 64> cutGroups_{};  // superdough's cutGroups, by choke group number

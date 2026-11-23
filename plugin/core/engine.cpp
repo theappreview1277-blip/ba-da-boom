@@ -146,6 +146,99 @@ void Engine::trigger(const PlayModel& m, const SampleSet& set, const Hit& h, dou
         v->bpFreq = c.bandf;
         for (int i = 0; i < stages; i++) v->bp[i].set(Biquad::Bandpass, c.bandf, v->bpQ, sr_);
     }
+    setEffects(*v, c, h, t, end + e.r, cps);
+}
+
+namespace {
+struct Formant {
+    const char* letter;
+    double freqs[5], gains[5], qs[5];
+};
+// vowel.mjs vowelFormant.
+const Formant kFormants[] = {
+    {"a", {660, 1120, 2750, 3000, 3350}, {1, 0.5012, 0.0708, 0.0631, 0.0126}, {80, 90, 120, 130, 140}},
+    {"e", {440, 1800, 2700, 3000, 3300}, {1, 0.1995, 0.1259, 0.1, 0.1}, {70, 80, 100, 120, 120}},
+    {"i", {270, 1850, 2900, 3350, 3590}, {1, 0.0631, 0.0631, 0.0158, 0.0158}, {40, 90, 100, 120, 120}},
+    {"o", {430, 820, 2700, 3000, 3300}, {1, 0.3162, 0.0501, 0.0794, 0.01995}, {40, 80, 100, 120, 120}},
+    {"u", {370, 630, 2750, 3000, 3400}, {1, 0.1, 0.0708, 0.0316, 0.01995}, {40, 60, 100, 120, 120}},
+};
+}  // namespace
+
+void Engine::setEffects(Voice& v, const Controls& c, const Hit& h, double t, double endWithRelease, double cps) {
+    for (const auto& f : kFormants) {
+        if (c.vowel != f.letter) continue;
+        v.vowelCount = 5;
+        for (int i = 0; i < 5; i++) {
+            v.vowel[i].set(Biquad::Bandpass, f.freqs[i], f.qs[i], sr_);
+            v.vowelGain[i] = f.gains[i] * 8;  // VowelNode's makeup gain is 8
+        }
+    }
+    if (c.coarse >= 0) v.coarse = std::max(1.0, c.coarse);
+    if (c.crush >= 0) v.crush = std::max(1.0, c.crush);
+    if (c.shape >= 0) {
+        const double sh = c.shape < 1 ? c.shape : 1.0 - 4e-10;
+        v.shape = (2.0 * sh) / (1.0 - sh);
+    }
+    if (c.distort >= 0) v.distort = std::expm1(c.distort);
+    if (c.tremolo >= 0) {
+        // GainNode at max(1 - depth, 0), plus an LFO: a ramp (skew 1) raised to 1.5, between 0 and 1.
+        v.tremolo = true;
+        v.tremoloBase = std::max(1 - c.tremolodepth, 0.0);
+        Lfo& l = v.tremoloLfo;
+        l.skew = 1, l.frequency = c.tremolo, l.depth = c.tremolodepth, l.time = h.cycle / cps, l.dcoffset = 0;
+        l.min = 0, l.max = 1, l.curve = 1.5, l.begin = t, l.end = endWithRelease;
+    }
+    if (c.phaserrate >= 0 && c.phaserdepth > 0) {
+        // superdough getPhaser: one notch at 1000 + 282 Hz swept by +-2000 cents.
+        v.phaser = true;
+        v.phaserFreq = 1000 + 282;
+        v.phaserQ = 2 - std::min(std::max(c.phaserdepth * 2, 0.0), 1.9);
+        Lfo& l = v.phaserLfo;
+        l.frequency = c.phaserrate, l.depth = 2000 * 2, l.begin = t, l.end = endWithRelease, l.time = t;
+        l.dcoffset = -0.5, l.min = -0.5 * l.depth, l.max = -0.5 * l.depth + l.depth;
+        v.phaserNotch.set(Biquad::Notch, v.phaserFreq, v.phaserQ, sr_);
+    }
+}
+
+void Engine::effects(Voice& v, long long frame, bool mono, float& l, float& r) {
+    if (v.vowelCount) {
+        // Five band-passes side by side, each with its own gain.
+        double sl = 0, sr = 0;
+        for (int i = 0; i < 5; i++) {
+            sl += v.vowel[i].process(l, 0) * v.vowelGain[i];
+            if (!mono) sr += v.vowel[i].process(r, 1) * v.vowelGain[i];
+        }
+        l = static_cast<float>(sl);
+        if (!mono) r = static_cast<float>(sr);
+    }
+    if (v.coarse > 0) {
+        // coarse-processor: within each 128-frame quantum, keep frames n % coarse == 0 and hold them.
+        const double n = static_cast<double>(frame % 128);
+        if (std::fmod(n, v.coarse) == 0) {
+            v.holdL = l, v.holdR = r;
+        } else {
+            l = v.holdL, r = v.holdR;
+        }
+    }
+    if (v.crush > 0) {
+        const double x = std::pow(2.0, v.crush - 1);
+        l = static_cast<float>(std::floor(l * x + 0.5) / x);
+        r = static_cast<float>(std::floor(r * x + 0.5) / x);
+    }
+    if (v.shape >= 0) {
+        const double k = v.shape;
+        l = static_cast<float>(((1 + k) * l) / (1 + k * std::abs(l)));
+        r = static_cast<float>(((1 + k) * r) / (1 + k * std::abs(r)));
+    }
+    if (v.distort >= 0) {
+        l = static_cast<float>(scurve(l, v.distort));
+        r = static_cast<float>(scurve(r, v.distort));
+    }
+    if (v.tremolo) {
+        const double g = v.tremoloBase + v.tremoloLfo.next(frame, sr_);
+        l = static_cast<float>(l * g);
+        r = static_cast<float>(r * g);
+    }
 }
 
 void Engine::stopAll(double time) {
@@ -213,8 +306,16 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
                 l = v.bp[k].process(l, 0);
                 if (!mono) r = v.bp[k].process(r, 1);
             }
+            const long long frame = std::llround(tt * sr_);
+            effects(v, frame, mono, l, r);
             float ol, orr;
             stereoPan(l, mono ? l : r, mono, v.pan, ol, orr);
+            if (v.phaser) {
+                const double cents = v.phaserLfo.next(frame, sr_);
+                v.phaserNotch.set(Biquad::Notch, v.phaserFreq * std::pow(2.0, cents / 1200), v.phaserQ, sr_);
+                ol = v.phaserNotch.process(ol, 0);
+                orr = v.phaserNotch.process(orr, 1);
+            }
             const auto tg = static_cast<float>(g0 + gStep * f);
             ol *= tg;
             orr *= tg;
