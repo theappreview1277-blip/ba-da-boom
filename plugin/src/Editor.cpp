@@ -1,5 +1,6 @@
 #include "Editor.h"
 #include <juce_cryptography/juce_cryptography.h>
+#include <functional>
 
 namespace bdb {
 
@@ -31,7 +32,8 @@ juce::String mimeFor(const juce::String& path) {
 
 /** A pool file name: a content hash, nothing that could leave the folder. */
 bool safeFileName(const juce::String& f) {
-    return f.isNotEmpty() && f.length() < 200 && f.containsOnly("0123456789abcdefABCDEF_-.") && !f.contains("..") && f.endsWithIgnoreCase(".wav");
+    const auto stem = f.dropLastCharacters(4);
+    return f.length() < 200 && f.endsWithIgnoreCase(".wav") && stem.isNotEmpty() && stem.containsOnly("0123456789abcdefABCDEF_-");
 }
 
 juce::MemoryBlock fromBase64(const juce::String& s) {
@@ -62,6 +64,86 @@ juce::var obj(std::initializer_list<std::pair<const char*, juce::var>> items) {
     auto* o = new juce::DynamicObject();
     for (auto& [k, v] : items) o->setProperty(k, v);
     return juce::var(o);
+}
+
+/** A relative path with / separators that stays inside its folder. */
+bool safeRelative(const juce::String& p) {
+    if (p.isEmpty() || p.length() > 1000 || p.startsWith("/") || p.containsChar('\\') || p.containsChar(':') || p.containsChar(0)) return false;
+    for (auto& seg : juce::StringArray::fromTokens(p, "/", ""))
+        if (seg.isEmpty() || seg == "." || seg == "..") return false;
+    return true;
+}
+
+/** A path in a kit's file list (as validKitPath in src/model/kits.ts). */
+bool validKitPath(const juce::String& p) { return p.endsWithIgnoreCase(".wav") && safeRelative(p); }
+
+/** The installed app's resources folder (its kits and the Acoustic Kit), or File() if there is none. */
+juce::File appResources() {
+    std::vector<juce::File> tries;
+    const auto env = juce::SystemStats::getEnvironmentVariable("BDB_APP_RESOURCES", {});
+    if (env.isNotEmpty()) tries.push_back(juce::File(env));
+#if JUCE_WINDOWS
+    // The installer records where it put the app (build/installer.nsh).
+    for (auto* root : {"HKEY_CURRENT_USER", "HKEY_LOCAL_MACHINE"}) {
+        const auto dir = juce::WindowsRegistry::getValue(juce::String(root) + "\\Software\\Ba-da-boom\\InstallLocation");
+        if (dir.isNotEmpty()) tries.push_back(juce::File(dir).getChildFile("resources"));
+    }
+    tries.push_back(juce::File::getSpecialLocation(juce::File::windowsLocalAppData).getChildFile("Programs").getChildFile("Ba-da-boom").getChildFile("resources"));
+    tries.push_back(juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory).getChildFile("Ba-da-boom").getChildFile("resources"));
+#endif
+    for (auto& f : tries)
+        if (f.getChildFile("kits").isDirectory() || f.getChildFile("acoustic").isDirectory()) return f;
+    return {};
+}
+
+/** The app's record of which pool file each kit file became (kits.ts keeps the same files). */
+juce::File kitCache(const juce::String& kit) { return PluginPaths::appData().getChildFile("kits").getChildFile(kit + ".json"); }
+
+bool validKitName(const juce::String& k) { return k.isNotEmpty() && k.length() < 100 && k.containsOnly("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"); }
+
+/** Sound files the browser lists (as the app's SAMPLE_FILE). */
+bool soundFile(const juce::String& name) {
+    for (auto* ext : {".wav", ".mp3", ".flac", ".ogg", ".oga", ".aif", ".aiff", ".aifc"})
+        if (name.endsWithIgnoreCase(ext)) return true;
+    return false;
+}
+
+/** All sound files under a folder, as paths relative to it with / separators, sorted (as library.ts scans). */
+juce::var scanFolder(const juce::String& root) {
+    constexpr int kMaxFiles = 5000, kMaxDepth = 8;
+    juce::Array<juce::var> files;
+    bool truncated = false;
+    const juce::File base(root);
+    const bool readable = base.isDirectory();
+    std::function<void(const juce::File&, int)> walk = [&](const juce::File& dir, int depth) {
+        auto entries = dir.findChildFiles(juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles, false);
+        std::sort(entries.begin(), entries.end(), [](const juce::File& a, const juce::File& b) { return a.getFileName().compareNatural(b.getFileName()) < 0; });
+        for (auto& e : entries) {
+            if (files.size() >= kMaxFiles) {
+                truncated = true;
+                return;
+            }
+            if (e.getFileName().startsWith(".")) continue;
+            if (e.isDirectory()) {
+                if (depth < kMaxDepth) walk(e, depth + 1);
+            } else if (soundFile(e.getFileName())) {
+                files.add(e.getRelativePathFrom(base).replaceCharacter('\\', '/'));
+            }
+        }
+    };
+    if (readable) walk(base, 0);
+    return obj({{"path", root}, {"files", files}, {"truncated", truncated}, {"readable", readable}});
+}
+
+/** A relative path with / separators, as a child of `dir` (File::getChildFile wants the system's separator). */
+juce::File childOf(const juce::File& dir, const juce::String& rel) { return dir.getChildFile(rel.replaceCharacter('/', juce::File::getSeparatorChar())); }
+
+juce::Array<juce::var> folderList(const juce::var& settings) {
+    juce::Array<juce::var> out;
+    if (auto* f = settings["folders"].getArray())
+        for (auto& v : *f)
+            if (v.isString()) out.add(v);
+    return out;
 }
 }  // namespace
 
@@ -130,6 +212,11 @@ juce::var Editor::settings() const {
     return v.isObject() ? v : juce::var();
 }
 
+void Editor::writeSettings(const juce::var& s) {
+    PluginPaths::settings().getParentDirectory().createDirectory();
+    PluginPaths::settings().replaceWithText(juce::JSON::toString(s));
+}
+
 void Editor::reply(const juce::var& id, bool ok, const juce::var& result) {
     // The result goes as base64 JSON. JUCE escapes every backslash and quote of an event's text
     // one by one, which takes seconds for a project's text (itself JSON); base64 has none.
@@ -193,9 +280,78 @@ void Editor::handleCall(const juce::var& message) {
             if (!isWav(bytes)) return fail(a["name"].toString() + " is not a WAV file.");
             reply(id, true, obj({{"file", addToPool(bytes)}}));
         } else if (name == "settingsSet") {
-            PluginPaths::settings().getParentDirectory().createDirectory();
-            PluginPaths::settings().replaceWithText(juce::JSON::toString(a["settings"]));
+            // The folders are changed only by folderAdd and folderRemove; the screen's copy may be older.
+            auto s = a["settings"];
+            if (auto* o = s.getDynamicObject()) o->setProperty("folders", folderList(settings()));
+            writeSettings(s);
             reply(id, true, {});
+        } else if (name == "kitFile") {
+            // A kit file the app's cache already put in the pool, or the copy installed with the app;
+            // null when it has to be downloaded.
+            const auto kit = a["kit"].toString(), path = a["path"].toString();
+            if (!validKitName(kit) || !validKitPath(path)) return fail("bad request");
+            const auto cached = juce::JSON::parse(kitCache(kit)).getProperty(juce::Identifier(path), {}).toString();
+            if (safeFileName(cached) && PluginPaths::pool().getChildFile(cached).existsAsFile()) return reply(id, true, obj({{"file", cached}}));
+            const auto res = appResources();
+            juce::MemoryBlock b;
+            if (res != juce::File() && childOf(res.getChildFile(static_cast<bool>(a["acoustic"]) ? "acoustic" : "kits"), path).loadFileAsData(b) && isWav(b))
+                return reply(id, true, obj({{"file", addToPool(b)}, {"stored", true}}));
+            reply(id, true, obj({{"file", juce::var()}}));
+        } else if (name == "kitRemember") {
+            const auto kit = a["kit"].toString();
+            if (!validKitName(kit)) return fail("bad request");
+            auto cache = juce::JSON::parse(kitCache(kit));
+            if (!cache.isObject()) cache = juce::var(new juce::DynamicObject());
+            if (auto* files = a["files"].getDynamicObject())
+                for (auto& f : files->getProperties())
+                    if (validKitPath(f.name.toString()) && safeFileName(f.value.toString())) cache.getDynamicObject()->setProperty(f.name, f.value);
+            kitCache(kit).getParentDirectory().createDirectory();
+            kitCache(kit).replaceWithText(juce::JSON::toString(cache));
+            reply(id, true, {});
+        } else if (name == "folderAdd") {
+            auto add = [this, id](const juce::File& dir) {
+                if (dir == juce::File() || !dir.isDirectory()) return reply(id, true, {});
+                auto s = settings();
+                if (!s.isObject()) s = juce::var(new juce::DynamicObject());
+                auto list = folderList(s);
+                list.addIfNotAlreadyThere(dir.getFullPathName());
+                s.getDynamicObject()->setProperty("folders", list);
+                writeSettings(s);
+                reply(id, true, scanFolder(dir.getFullPathName()));
+            };
+            // For the end-to-end tests only: the folder the dialog would give.
+            const auto testFolder = juce::SystemStats::getEnvironmentVariable("BDB_PLUGIN_TEST_FOLDER", {});
+            if (testFolder.isNotEmpty()) return add(juce::File(testFolder));
+            chooser_ = std::make_unique<juce::FileChooser>("Add a sample folder", juce::File::getSpecialLocation(juce::File::userMusicDirectory));
+            chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [add](const juce::FileChooser& c) { add(c.getResult()); });
+        } else if (name == "folderRemove") {
+            auto s = settings();
+            if (s.isObject()) {
+                auto list = folderList(s);
+                list.removeAllInstancesOf(a["path"]);
+                s.getDynamicObject()->setProperty("folders", list);
+                writeSettings(s);
+            }
+            reply(id, true, {});
+        } else if (name == "folderList") {
+            juce::Array<juce::var> out;
+            for (auto& f : folderList(settings())) out.add(scanFolder(f.toString()));
+            reply(id, true, out);
+        } else if (name == "folderRead") {
+            // Only files inside a folder the user added, as the app reads them (main.ts folderRead).
+            const auto folder = a["folder"].toString(), rel = a["file"].toString();
+            if (!folderList(settings()).contains(folder) || !soundFile(rel) || !safeRelative(rel))
+                return fail("That file is not in one of your sample folders.");
+            const juce::File root(folder);
+            const auto full = childOf(root, rel);
+            if (!full.isAChildOf(root)) return fail("That file is not in one of your sample folders.");
+            if (!full.existsAsFile()) return fail("The file is no longer there.");
+            if (full.getSize() > 200ll * 1024 * 1024) return fail("Sample is larger than 200 MB.");
+            juce::MemoryBlock b;
+            if (!full.loadFileAsData(b)) return fail("The file could not be read.");
+            if (!rel.endsWithIgnoreCase(".wav")) return reply(id, true, obj({{"bytes64", b.toBase64Encoding()}}));
+            if (!isWav(b)) return fail(full.getFileName() + " is not a WAV file.");
+            reply(id, true, obj({{"file", addToPool(b)}}));
         } else if (name == "testReport") {
             const auto out = juce::SystemStats::getEnvironmentVariable("BDB_PLUGIN_TEST_OUT", {});
             if (out.isEmpty()) return fail("not testing");
@@ -215,7 +371,8 @@ void Editor::handleCall(const juce::var& message) {
                 const auto text = f.loadFileAsString();
                 // Bring the project's collected samples into the pool so they can be played.
                 juce::Array<juce::var> missing;
-                if (auto* samples = juce::JSON::parse(text)["samples"].getDynamicObject())
+                const auto parsed = juce::JSON::parse(text);  // kept: the loop below reads into it
+                if (auto* samples = parsed["samples"].getDynamicObject())
                     for (auto& s : samples->getProperties()) {
                         const auto file = s.value["file"].toString();
                         if (s.value["source"].toString() != "user" || !safeFileName(file) || PluginPaths::pool().getChildFile(file).existsAsFile()) continue;
@@ -235,7 +392,8 @@ void Editor::handleCall(const juce::var& message) {
                 // Collect user samples next to the project so the folder is portable.
                 juce::Array<juce::var> notCollected;
                 const auto dir = f.getSiblingFile("samples");
-                if (auto* samples = juce::JSON::parse(text)["samples"].getDynamicObject())
+                const auto parsed = juce::JSON::parse(text);  // kept: the loop below reads into it
+                if (auto* samples = parsed["samples"].getDynamicObject())
                     for (auto& s : samples->getProperties()) {
                         const auto file = s.value["file"].toString();
                         if (s.value["source"].toString() != "user" || !safeFileName(file) || dir.getChildFile(file).existsAsFile()) continue;

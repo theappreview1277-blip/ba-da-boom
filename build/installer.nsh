@@ -10,6 +10,8 @@
 ; until it is closed.
 !macro customInstall
   WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"
+  ; The plugins look here for the kits installed with the app (plugin/src/Editor.cpp, appResources).
+  WriteRegStr SHELL_CONTEXT "Software\Ba-da-boom" InstallLocation "$INSTDIR"
   IfFileExists "$INSTDIR\resources\plugins\Ba-da-boom.vst3\*.*" 0 +4
     CreateDirectory "$LOCALAPPDATA\Programs\Common\VST3"
     RMDir /r "$LOCALAPPDATA\Programs\Common\VST3\Ba-da-boom.vst3"
@@ -20,6 +22,7 @@
 !macroend
 
 !macro customUnInstall
+  DeleteRegKey SHELL_CONTEXT "Software\Ba-da-boom"
   RMDir /r "$LOCALAPPDATA\Programs\Common\VST3\Ba-da-boom.vst3"
   Delete "$LOCALAPPDATA\Programs\Common\CLAP\Ba-da-boom.clap"
 !macroend

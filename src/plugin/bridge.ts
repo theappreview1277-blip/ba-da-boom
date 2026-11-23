@@ -2,7 +2,10 @@
 // window.__JUCE__.backend; requests go out on the "bdb" event and answers come back on
 // "bdbReply". See plugin/src/Editor.h for the other side.
 
-import type { DesktopApi, Settings } from '../main/ipc';
+import type { DesktopApi, FolderListing, KitProgress, KitResult, KitSample, Settings } from '../main/ipc';
+import { validKitPath } from '../model/kits';
+import catalogue from '../main/strudel-kits.json';
+import acoustic from '../main/acoustic-kit.json';
 
 interface JuceBackend {
   emitEvent(id: string, payload: unknown): void;
@@ -107,8 +110,68 @@ export function toBase64(bytes: Uint8Array): string {
 const DEFAULT_SETTINGS: Settings = { folders: [], favourites: [], layout: {}, sound: {}, welcomed: true };
 let settings: Settings | null = null;
 
-const notInPlugin = (what: string) => async (): Promise<never> => {
-  throw new Error(`${what} is in the Ba-da-boom app, not in the plugin.`);
+// The kits, as the app has them (src/main/kits.ts): the Acoustic Kit and Strudel's drum machines.
+// Files come from the app's cache or its installed copy (through the plugin), else from the
+// internet, and go into the shared sample pool.
+const LOCAL = acoustic.kits as Record<string, Record<string, string[]>>;
+const KITS: Record<string, Record<string, string[]>> = { ...LOCAL, ...(catalogue.kits as Record<string, Record<string, string[]>>) };
+const MAX_KIT_FILE_BYTES = 20 * 1024 * 1024;
+const kitProgressListeners = new Set<(p: KitProgress) => void>();
+
+function kitCounts(): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const [name, sounds] of Object.entries(KITS)) out[name] = Object.fromEntries(Object.entries(sounds).map(([s, files]) => [s, files.length]));
+  return out;
+}
+
+const isWavBytes = (b: Uint8Array) =>
+  b.length > 44 && String.fromCharCode(...b.subarray(0, 4)) === 'RIFF' && String.fromCharCode(...b.subarray(8, 12)) === 'WAVE';
+
+async function downloadKit(name: string): Promise<KitResult> {
+  if (!Object.hasOwn(KITS, name)) throw new Error('Unknown kit');
+  const local = Object.hasOwn(LOCAL, name);
+  const jobs = Object.entries(KITS[name]).flatMap(([sound, files]) => files.filter(validKitPath).map((path, index) => ({ sound, index, path })));
+  const base = catalogue.base.replace(/\/?$/, '/');
+  const samples: KitSample[] = [];
+  const remember: Record<string, string> = {};
+  let failed = 0;
+  let fetched = 0;
+  let done = 0;
+  const progress = () => kitProgressListeners.forEach((fn) => fn({ kit: name, done, total: jobs.length }));
+  progress();
+  const queue = [...jobs];
+  const worker = async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) {
+      try {
+        let { file } = await call<{ file: string | null; stored?: boolean }>('kitFile', { kit: name, path: job.path, acoustic: local });
+        if (file === null) {
+          if (local) throw new Error('not installed');
+          const res = await fetch(base + job.path.split('/').map(encodeURIComponent).join('/'), { cache: 'no-store' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          if (bytes.length > MAX_KIT_FILE_BYTES || !isWavBytes(bytes)) throw new Error('not a WAV file');
+          file = (await pluginApi.importSample(job.path, bytes)).file;
+          fetched++;
+        }
+        remember[job.path] = file;
+        samples.push({ sound: job.sound, index: job.index, file });
+      } catch {
+        failed++;
+      }
+      done++;
+      progress();
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  if (!samples.length) throw new Error(`Could not get ${name}${local ? ' (the Ba-da-boom app is not installed).' : '. Check the internet connection and try again.'}`);
+  await call('kitRemember', { kit: name, files: remember }).catch(() => {});
+  samples.sort((a, b) => a.sound.localeCompare(b.sound) || a.index - b.index);
+  return { kit: name, sounds: kitCounts()[name], samples, failed, downloaded: fetched };
+}
+
+/** Keeps the screen's copy of the settings in step with the plugin's folder list. */
+const setFolders = (fn: (f: string[]) => string[]) => {
+  if (settings) settings = { ...settings, folders: fn(settings.folders) };
 };
 
 /** The desktop services, as the plugin provides them. */
@@ -144,10 +207,12 @@ export const pluginApi: DesktopApi = {
     await call('showInFolder', { path });
   },
   async kitList() {
-    return {};
+    return kitCounts();
   },
-  kitDownload: notInPlugin('Downloading kits'),
-  onKitProgress() {},
+  kitDownload: downloadKit,
+  onKitProgress(cb) {
+    kitProgressListeners.add(cb);
+  },
   async settingsGet() {
     if (!settings) {
       const s = await call<{ settings: Settings | null }>('getState');
@@ -161,12 +226,26 @@ export const pluginApi: DesktopApi = {
     await call('settingsSet', { settings });
     return settings;
   },
-  folderAdd: notInPlugin('Sample folders'),
-  async folderRemove() {},
-  async folderList() {
-    return [];
+  async folderAdd() {
+    const l = await call<FolderListing | null>('folderAdd');
+    if (l) setFolders((f) => (f.includes(l.path) ? f : [...f, l.path]));
+    return l;
   },
-  folderRead: notInPlugin('Sample folders'),
+  async folderRemove(path) {
+    await call('folderRemove', { path });
+    setFolders((f) => f.filter((x) => x !== path));
+  },
+  async folderList() {
+    return (await call<FolderListing[] | null>('folderList')) ?? [];
+  },
+  async folderRead(folder, file) {
+    const r = await call<{ file: string } | { bytes64: string }>('folderRead', { folder, file });
+    if ('file' in r) return r;
+    const bin = atob(r.bytes64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { bytes };
+  },
   onBeforeClose() {},
   async closeReady() {},
   async closePending() {},

@@ -7,11 +7,31 @@
 // bdb_render comes from the plugin build: BDB_RENDER=<path>, or build-core/bdb_render
 // next to the repository.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { closeApp, launchApp, newProfile, runStandalone } from './lib.mjs';
+
+/** A short 16-bit mono WAV of a fading sine. */
+function testWav(freq) {
+  const n = 4410;
+  const buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + n * 2, 4);
+  buf.write('WAVEfmt ', 8);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(44100, 24);
+  buf.writeUInt32LE(88200, 28);
+  buf.writeUInt16LE(2, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write('data', 36);
+  buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * freq * i) / 44100) * 20000 * (1 - i / n)), 44 + i * 2);
+  return buf;
+}
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RENDER =
@@ -268,18 +288,21 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
       const ok = !r.error && r.events[0] === r.events[1] && Math.abs(r.frames[0] - r.frames[1]) <= TAIL_FRAMES && r.db < limitDb;
       t.check(`sounds like the app: ${name}`, ok, r.error ?? `${r.db.toFixed(1)} dB, events ${r.events.join('/')}, frames ${r.frames.join('/')}`);
     }
-    if (only) return;
+    // BDB_PARITY_ONLY=host: only the host and screen checks after the cases it names (none).
+    if (only && only !== 'host') return;
 
     // The Acoustic Kit's stereo recordings, from the sample pool.
-    await win.selectOption('select[aria-label=Kit]', 'AcousticKit');
-    await win.waitForFunction(() => window.__lastKit?.kit === 'AcousticKit', null, { timeout: 30000 });
-    await win.evaluate(() => {
-      const p = window.__engine.project;
-      Object.assign(window.__parityBase, { tracks: window.__parityBase.tracks.map((tr, i) => ({ ...tr, sound: { ...tr.sound, sampleId: p.tracks[i].sound.sampleId } })), samples: p.samples });
-    });
-    CASES.push(['the Acoustic Kit (stereo samples)', {}]);
-    const r = await runCase('the Acoustic Kit (stereo samples)', { 0: { pitch: 2 }, 1: { lowpass: 2000 } });
-    t.check('sounds like the app: the Acoustic Kit (stereo samples)', !r.error && r.events[0] === r.events[1] && Math.abs(r.frames[0] - r.frames[1]) <= TAIL_FRAMES && r.db < limitDb, r.error ?? `${r.db.toFixed(1)} dB, events ${r.events.join('/')}, frames ${r.frames.join('/')}`);
+    if (!only) {
+      await win.selectOption('select[aria-label=Kit]', 'AcousticKit');
+      await win.waitForFunction(() => window.__lastKit?.kit === 'AcousticKit', null, { timeout: 30000 });
+      await win.evaluate(() => {
+        const p = window.__engine.project;
+        Object.assign(window.__parityBase, { tracks: window.__parityBase.tracks.map((tr, i) => ({ ...tr, sound: { ...tr.sound, sampleId: p.tracks[i].sound.sampleId } })), samples: p.samples });
+      });
+      CASES.push(['the Acoustic Kit (stereo samples)', {}]);
+      const r = await runCase('the Acoustic Kit (stereo samples)', { 0: { pitch: 2 }, 1: { lowpass: 2000 } });
+      t.check('sounds like the app: the Acoustic Kit (stereo samples)', !r.error && r.events[0] === r.events[1] && Math.abs(r.frames[0] - r.frames[1]) <= TAIL_FRAMES && r.db < limitDb, r.error ?? `${r.db.toFixed(1)} dB, events ${r.events.join('/')}, frames ${r.frames.join('/')}`);
+    }
 
     // --- The built VST3 in a host: state, transport, outputs, MIDI out, automation and its screen ---
     t.check('the VST3 and the test host are built', !!HOST && !!VST3, `${HOST ?? 'no host (set BDB_HOST_TEST)'} / ${VST3 ?? 'no VST3 (set BDB_VST3)'}`);
@@ -302,7 +325,34 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
       writeFileSync(join(hostDir, 'project.txt'), got.project);
       writeFileSync(join(hostDir, 'model.json'), got.model);
       const reportFile = join(hostDir, 'screen.json');
-      const screenEnv = { BDB_PLUGIN_TEST_SCRIPT: join(REPO, 'test', 'e2e', 'plugin-screen.js'), BDB_PLUGIN_TEST_OUT: reportFile, BDB_PLUGIN_TRACE: '1' };
+      // What the screen's kits and sample folder checks use: an app install with only the TR-808
+      // and the Acoustic Kit (other kits download), and a sample folder.
+      const appRes = join(hostDir, 'app-resources');
+      cpSync(join(REPO, 'resources', 'kits', 'RolandTR808'), join(appRes, 'kits', 'RolandTR808'), { recursive: true });
+      cpSync(join(REPO, 'resources', 'acoustic'), join(appRes, 'acoustic'), { recursive: true });
+      const sampleDir = join(hostDir, 'My Samples');
+      const put = (rel, data) => {
+        mkdirSync(join(sampleDir, rel, '..'), { recursive: true });
+        writeFileSync(join(sampleDir, rel), data);
+      };
+      put('Kicks/Kick 01.wav', testWav(60));
+      put('Snares/Snare A.wav', testWav(220));
+      put('Fake.wav', 'this is not audio');
+      put('readme.txt', 'not a sample');
+      put('.hidden/Secret.wav', testWav(500));
+      writeFileSync(join(hostDir, 'outside.wav'), testWav(330));
+      // On Windows the plugin uses the real app folder: keep its settings as they were, and
+      // forget the Casio download so it is downloaded again.
+      const appDir = process.platform === 'win32' ? join(process.env.APPDATA ?? '', 'Ba-da-boom') : null;
+      const keep = appDir ? [join(appDir, 'plugin-settings.json'), join(appDir, 'kits', 'CasioVL1.json')].map((f) => ({ f, text: existsSync(f) ? readFileSync(f) : null })) : [];
+      for (const k of keep.slice(1)) rmSync(k.f, { force: true });
+      const screenEnv = {
+        BDB_PLUGIN_TEST_SCRIPT: join(REPO, 'test', 'e2e', 'plugin-screen.js'),
+        BDB_PLUGIN_TEST_OUT: reportFile,
+        BDB_PLUGIN_TRACE: '1',
+        BDB_APP_RESOURCES: appRes,
+        BDB_PLUGIN_TEST_FOLDER: sampleDir,
+      };
       // On Windows the screen is opened inside the host. On Linux a JUCE host cannot drive a JUCE
       // plugin's web view (its scripts never return), so there the screen is checked in the
       // plugin's standalone build instead, with a silent sound device.
@@ -316,7 +366,11 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
         t.check('the standalone build is there (for the screen check)', !!STANDALONE, STANDALONE ?? 'not found (set BDB_STANDALONE)');
         const home = mkdtempSync(join(tmpdir(), 'bdb-standalone-'));
         writeFileSync(join(home, '.asoundrc'), 'pcm.!default { type null }\nctl.!default { type hw card 0 }\n');
-        spawnSync(STANDALONE, [], { timeout: 90000, env: { ...process.env, ...screenEnv, HOME: home } });
+        spawnSync(STANDALONE, [], { timeout: 150000, env: { ...process.env, ...screenEnv, HOME: home } });
+      }
+      for (const k of keep) {
+        if (k.text) writeFileSync(k.f, k.text);
+        else if (k.f.endsWith('plugin-settings.json')) rmSync(k.f, { force: true });
       }
       const host = existsSync(join(hostDir, 'host.json')) ? JSON.parse(readFileSync(join(hostDir, 'host.json'), 'utf8')) : { error: out.stderr || `exit ${out.status}` };
       t.check('the host loads the plugin as an instrument', !host.error && host.name === 'Ba-da-boom' && host.isInstrument, host.error ?? host.name);
@@ -369,6 +423,20 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
         const step = after?.patterns.find((x) => x.id === after.currentPatternId)?.lanes.t1?.steps[3];
         t.check("and the host saves it with its project", !!after && !!step?.on === c.stepNowOn, `${step?.on}`);
       }
+      const kit = (k) => (k ? `${k.files} files, ${k.failed} failed, ${k.downloaded} downloaded, on ${k.assigned} tracks` : 'no result');
+      t.check('the screen lists every kit the app has', c.kitCount >= 70, c.kitCount);
+      t.check('a kit installed with the app loads in the plugin with no internet (TR-808, 122 files)', c.kit808?.files === 122 && c.kit808.failed === 0 && c.kit808.downloaded === 0 && c.kit808.assigned > 0, kit(c.kit808));
+      t.check('and the plugin plays it: it has every sound, and keeps the kit in the host project', c.kitInPlugin === true && c.kit808Kept === c.kit808?.assigned, `${c.kitInPlugin} ${c.kit808Kept}`);
+      t.check('the Acoustic Kit loads in the plugin', c.kitAcoustic?.files === 19 && c.kitAcoustic.failed === 0 && c.kitAcoustic.downloaded === 0, kit(c.kitAcoustic));
+      t.check('a kit not installed downloads from GitHub, as in the app (Casio VL-1)', c.kitCasio?.files === 3 && c.kitCasio.failed === 0 && c.kitCasio.downloaded === 3, kit(c.kitCasio));
+      t.check("loaded again, it comes from the app's kit cache, not the internet", c.kitCasioAgain?.files === 3 && c.kitCasioAgain.downloaded === 0, kit(c.kitCasioAgain));
+      t.check('Add folder lists the sound files in it and its subfolders', c.folderFiles === 'Fake|Kicks/Kick 01|Snares/Snare A', c.folderFiles);
+      t.check('double-clicking a folder file puts it on the track, from the sample pool', /^Kick 01 user [0-9a-f]{32}\.wav$/.test(c.folderAssigned ?? ''), c.folderAssigned);
+      t.check('files outside the folder, and files that are not WAVs, are refused', /not in one of your sample folders/.test(c.folderOutside) && /not a WAV file/.test(c.folderFake), `${c.folderOutside} / ${c.folderFake}`);
+      t.check("the screen's settings don't drop the folder", c.folderKept === '3', c.folderKept);
+      const pooled = /([0-9a-f]{32}\.wav)$/.exec(c.folderAssigned ?? '')?.[1];
+      const collected = pooled ? join(sampleDir, 'samples', pooled) : '';
+      t.check('saving a project from the plugin puts its own samples next to it', c.savedNotCollected === 0 && existsSync(collected) && readFileSync(collected).equals(testWav(60)), `${c.savedNotCollected} not collected, ${existsSync(collected) ? 'collected' : 'missing'}`);
       t.check('no errors on the plugin screen', !c.pageErrors, c.pageErrors || 'none');
     }
     t.check('no page errors', pageErrors.length === 0, pageErrors.join(' | ') || 'none');

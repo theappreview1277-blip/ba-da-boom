@@ -1,6 +1,6 @@
 // Runs inside the plugin's screen (injected by the test host through BDB_PLUGIN_TEST_SCRIPT):
 // checks the screen shows the project the host gave the plugin, previews it with Play, plays
-// a pad, changes a step, and reports back through the plugin.
+// a pad, changes a step, loads kits, adds a sample folder, and reports back through the plugin.
 (function () {
   const report = { checks: {}, notes: [] };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -82,6 +82,47 @@
       const kept = after?.result?.project ? JSON.parse(after.result.project) : null;
       report.checks.pluginBpm = kept?.bpm ?? null;
       report.checks.pluginStepOn = !!kept?.patterns.find((x) => x.id === kept.currentPatternId)?.lanes.t1?.steps[3]?.on;
+      // Kits: from the app's installed copy, the Acoustic Kit, a download, and the app's cache.
+      const pickKit = async (name) => {
+        window.__lastKit = null;
+        const el = document.querySelector('select[aria-label=Kit]');
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, name);
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        const k = await until(() => window.__lastKit?.kit === name && window.__lastKit, 60000);
+        if (!k) report.notes.push(`${name}: ${document.querySelector('.toast')?.textContent}`);
+        return k ? { files: k.samples.length, failed: k.failed, downloaded: k.downloaded, assigned: k.assigned } : null;
+      };
+      report.checks.kitCount = document.querySelectorAll('select[aria-label=Kit] option').length;
+      report.checks.kit808 = await pickKit('RolandTR808');
+      // The plugin has every sound of the kit (it reports what it could not find).
+      await sleep(1500);
+      report.checks.kitInPlugin = e.current.tracks.every((t) => !t.sound.sampleId || t.sound.sampleId.startsWith('user:') || t.sound.sampleId.startsWith('factory:')) && e.pluginMissing?.length === 0;
+      const kept808 = JSON.parse((await send('getState', {})).result.project);
+      report.checks.kit808Kept = kept808.tracks.filter((t) => kept808.samples[t.sound.sampleId]?.kit === 'RolandTR808').length;
+      report.checks.kitAcoustic = await pickKit('AcousticKit');
+      report.checks.kitCasio = await pickKit('CasioVL1');
+      report.checks.kitCasioAgain = await pickKit('CasioVL1');
+      // Sample folders.
+      const group = () => document.querySelector('.browser-group.folder');
+      [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Add folder'))?.click();
+      await until(() => group()?.querySelectorAll('li').length, 10000);
+      report.checks.folderFiles = [...(group()?.querySelectorAll('li .name') ?? [])].map((n) => n.textContent).join('|');
+      const before = Object.keys(e.current.samples).length;
+      const li = [...(group()?.querySelectorAll('li') ?? [])].find((x) => x.textContent.includes('Kicks/Kick 01'));
+      li?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await until(() => Object.keys(e.current.samples).length > before, 10000);
+      const ref = e.current.samples[e.current.tracks[0].sound.sampleId];
+      report.checks.folderAssigned = ref ? `${ref.name} ${ref.source} ${ref.file}` : null;
+      const folder = group()?.dataset.folder;
+      report.checks.folderOutside = (await send('folderRead', { folder, file: '../outside.wav' })).error ?? 'read';
+      report.checks.folderFake = (await send('folderRead', { folder, file: 'Fake.wav' })).error ?? 'read';
+      // The screen's settings don't drop the folder.
+      await send('settingsSet', { settings: { folders: [], favourites: [], layout: {}, sound: {} } });
+      report.checks.folderKept = ((await send('folderList', {})).result ?? []).map((f) => f.files.length).join(',');
+      // Saving collects the project's own samples next to it (here, in the sample folder).
+      const sep = folder.includes('\\') ? '\\' : '/';
+      const saved = await send('saveProject', { text: JSON.stringify({ samples: e.current.samples }), path: `${folder}${sep}Saved.badaboom`, saveAs: false });
+      report.checks.savedNotCollected = saved.ok ? saved.result.notCollected.length : saved.error;
       report.checks.pageErrors = (window.__pageErrors ?? []).join(' | ');
     } catch (err) {
       report.error = String(err?.stack ?? err);
