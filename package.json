@@ -1,7 +1,7 @@
 {
   "name": "badaboom",
   "productName": "Ba-da-boom",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Drum machine with a visual step sequencer, powered by Strudel's pattern engine",
   "license": "AGPL-3.0-or-later",
   "author": "Ba-da-boom contributors",
