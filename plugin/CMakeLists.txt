@@ -2,7 +2,10 @@
 # The core (play model, scheduling, sound engine) is plain C++ so it can be tested on its own;
 # the plugin wraps it with JUCE (AGPLv3) and clap-juce-extensions (MIT).
 cmake_minimum_required(VERSION 3.22)
-project(BadaboomPlugin VERSION 0.1.0 LANGUAGES C CXX)
+# The plugin has the app's version, from package.json.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../package.json" BDB_PACKAGE_JSON)
+string(JSON BDB_VERSION GET "${BDB_PACKAGE_JSON}" version)
+project(BadaboomPlugin VERSION ${BDB_VERSION} LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
