@@ -4,6 +4,17 @@
 namespace bdb {
 
 namespace {
+// BDB_PLUGIN_TRACE=1 logs how long the screen's requests and files take, and how often the
+// status timer runs, to the plugin's log: for finding out where a slow screen spends its time.
+bool tracing() {
+    static const bool on = juce::SystemStats::getEnvironmentVariable("BDB_PLUGIN_TRACE", {}).isNotEmpty();
+    return on;
+}
+double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
+}  // namespace
+
+
+namespace {
 juce::String mimeFor(const juce::String& path) {
     const auto ext = path.fromLastOccurrenceOf(".", false, false).toLowerCase();
     if (ext == "html") return "text/html";
@@ -86,6 +97,13 @@ void Editor::resized() { web_->setBounds(getLocalBounds()); }
 void Editor::projectReplaced() { web_->emitEventIfBrowserIsVisible("bdbProject", obj({})); }
 
 std::optional<juce::WebBrowserComponent::Resource> Editor::resource(const juce::String& url) {
+    const auto t0 = nowMs();
+    auto r = serve(url);
+    if (tracing()) Processor::log("trace", "file " + url + " " + juce::String(r ? static_cast<int>(r->data.size()) : -1) + " bytes, " + juce::String(nowMs() - t0, 1) + " ms");
+    return r;
+}
+
+std::optional<juce::WebBrowserComponent::Resource> Editor::serve(const juce::String& url) {
     auto path = juce::URL::removeEscapeChars(url.upToFirstOccurrenceOf("?", false, false)).trimCharactersAtStart("/");
     if (path.isEmpty()) path = "index.html";
     juce::File f;
@@ -117,6 +135,14 @@ void Editor::reply(const juce::var& id, bool ok, const juce::var& result) {
 }
 
 void Editor::timerCallback() {
+    if (tracing()) {
+        const auto t = nowMs();
+        if (++ticks_ == 1) tickFrom_ = t;
+        if (t - tickFrom_ >= 1000) {
+            Processor::log("trace", "status timer ran " + juce::String(ticks_ - 1) + " times in " + juce::String(t - tickFrom_, 0) + " ms");
+            ticks_ = 0;
+        }
+    }
     auto& pl = proc_.player();
     juce::Array<juce::var> peaks;
     for (int i = 0; i < kMaxTracks; i++) peaks.add(pl.trackPeak[i].exchange(0.f));
@@ -131,6 +157,12 @@ void Editor::timerCallback() {
 }
 
 void Editor::handle(const juce::var& message) {
+    const auto t0 = nowMs();
+    handleCall(message);
+    if (tracing()) Processor::log("trace", "call " + message["name"].toString() + " " + juce::String(nowMs() - t0, 1) + " ms");
+}
+
+void Editor::handleCall(const juce::var& message) {
     const auto id = message["id"];
     const auto name = message["name"].toString();
     const auto a = message["args"];

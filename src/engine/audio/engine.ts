@@ -44,6 +44,9 @@ const LIVE_HIT_DELAY = 0.03;
 /** Effect tails (reverb, delay) die away within this after the last sound. */
 const IDLE_AFTER_MS = 6000;
 
+/** The rate the app plays, decodes and exports at. */
+export const EXPORT_RATE = 44100;
+
 export class AudioEngine {
   readonly ac: AudioContext;
   private scheduler!: CyclistLike;
@@ -76,7 +79,10 @@ export class AudioEngine {
   }
 
   constructor(private resolveUrl: (ref: SampleRef) => string) {
-    this.ac = new AudioContext({ latencyHint: 'interactive' });
+    // At the rate of the WAV export (and of the factory sounds), so sounds are decoded once at the
+    // rate they are exported at, not resampled twice on a 48 kHz sound card. The system converts the
+    // output to the sound card's rate.
+    this.ac = new AudioContext({ latencyHint: 'interactive', sampleRate: EXPORT_RATE });
   }
 
   async init() {

@@ -183,7 +183,7 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
       writeFileSync(join(hostDir, 'project.txt'), got.project);
       writeFileSync(join(hostDir, 'model.json'), got.model);
       const reportFile = join(hostDir, 'screen.json');
-      const screenEnv = { BDB_PLUGIN_TEST_SCRIPT: join(REPO, 'test', 'e2e', 'plugin-screen.js'), BDB_PLUGIN_TEST_OUT: reportFile };
+      const screenEnv = { BDB_PLUGIN_TEST_SCRIPT: join(REPO, 'test', 'e2e', 'plugin-screen.js'), BDB_PLUGIN_TEST_OUT: reportFile, BDB_PLUGIN_TRACE: '1' };
       // On Windows the screen is opened inside the host. On Linux a JUCE host cannot drive a JUCE
       // plugin's web view (its scripts never return), so there the screen is checked in the
       // plugin's standalone build instead, with a silent sound device.
@@ -237,6 +237,12 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
       }
       t.check('Play on the screen previews the beat in the plugin, with the playhead and meters moving', c.playing && c.playheadDrawn > 0 && c.cycleMoved > 0.2 && c.metersMoved > 0.01 && c.stopped, JSON.stringify({ p: c.playing, h: c.playheadDrawn, c: c.cycleMoved, m: c.metersMoved, s: c.stopped }));
       t.check('the plugin reports what it plays to the screen, about 30 times a second', c.stateEvents >= 20, `${c.stateEvents} a second`);
+      if (!(c.stateEvents >= 20)) {
+        // The plugin's trace: how long its answers and files took, and how often its status timer ran.
+        const appData = process.platform === 'win32' ? process.env.APPDATA : join(process.env.HOME ?? '', '.config');
+        const log = join(appData ?? '', 'Ba-da-boom', 'logs', 'badaboom-plugin.log');
+        if (existsSync(log)) console.log(readFileSync(log, 'utf8').split('\n').filter((l) => l.includes('trace:')).slice(-120).map((l) => `    ${l}`).join('\n'));
+      }
       t.check("a step changed on the screen reaches the plugin and the host's project", c.stepNowOn === !c.stepWasOn && c.pluginStepOn === c.stepNowOn, `${c.stepWasOn} -> ${c.stepNowOn}; in the plugin: ${c.pluginStepOn}`);
       if (screenInHost) {
         const after = host.projectAfterEditor ? JSON.parse(host.projectAfterEditor) : null;

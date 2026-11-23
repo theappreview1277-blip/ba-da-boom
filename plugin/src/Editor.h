@@ -22,12 +22,16 @@ public:
 private:
     void timerCallback() override;
     void handle(const juce::var& message);
+    void handleCall(const juce::var& message);
     void reply(const juce::var& id, bool ok, const juce::var& result);
     std::optional<juce::WebBrowserComponent::Resource> resource(const juce::String& url);
+    std::optional<juce::WebBrowserComponent::Resource> serve(const juce::String& url);
     juce::var settings() const;
 
     Processor& proc_;
     std::unique_ptr<juce::WebBrowserComponent> web_;
+    int ticks_ = 0;
+    double tickFrom_ = 0;
     std::unique_ptr<juce::FileChooser> chooser_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Editor)
 };
