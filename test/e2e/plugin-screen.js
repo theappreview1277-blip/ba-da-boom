@@ -21,10 +21,21 @@
       window.__JUCE__.backend.addEventListener('bdbReply', (r) => r.id === id && resolve(r));
       window.__JUCE__.backend.emitEvent('bdb', { id, name, args });
     });
+  const t0 = performance.now();
+  const ms = () => Math.round(performance.now() - t0);
   const run = async () => {
     try {
+      // How quickly the plugin answers and reports, measured before the screen is busy.
+      let early = 0;
+      window.__JUCE__.backend.addEventListener('bdbState', () => early++);
+      const ask = performance.now();
+      const first = await send('getState', {});
+      report.checks.getStateMs = Math.round(performance.now() - ask);
+      report.checks.hostProjectBpm = first?.result?.project ? JSON.parse(first.result.project).bpm : null;
+      report.notes.push(`getState answered at ${ms()} ms`);
       const ready = await until(() => window.__engine && document.querySelector('[data-cell="t1:0"]') && !document.querySelector('.topbar button.play[disabled]'), 30000);
       report.checks.screenStarted = !!ready;
+      report.notes.push(`screen ready at ${ms()} ms, ${early} state events so far`, `visibility ${document.visibilityState}`);
       if (!ready) {
         report.notes.push(`url ${location.href}`, `engine ${!!window.__engine}`, `cells ${document.querySelectorAll('.cell').length}`, `body ${document.body?.innerText.slice(0, 300)}`);
         return;
@@ -33,10 +44,15 @@
       const e = window.__engine;
       let states = 0;
       window.__JUCE__.backend.addEventListener('bdbState', () => states++);
-      await sleep(500);
-      report.checks.stateEvents = states;
+      const from = performance.now();
+      await sleep(1000);
+      report.checks.stateEvents = Math.round((states * 1000) / (performance.now() - from));  // per second
+      report.notes.push(`${states} state events in ${Math.round(performance.now() - from)} ms`);
       report.checks.pluginEngine = 'webAudio' in e && typeof e.resend === 'function';
       report.checks.webAudio = e.webAudio;
+      // The screen loads the host's project as soon as the plugin answers.
+      if (report.checks.hostProjectBpm != null) await until(() => e.current && e.current.bpm === report.checks.hostProjectBpm, 10000);
+      report.notes.push(`project shown at ${ms()} ms`);
       const shown = e.current;  // the project the screen sends to the plugin
       report.checks.bpmShown = shown?.bpm ?? null;
       report.checks.trackNames = shown?.tracks.map((t) => t.name).join('|');

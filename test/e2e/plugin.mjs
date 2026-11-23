@@ -228,6 +228,7 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
       t.check('the host sees the volume, mute, song and pattern controls', host.parameters === 4 + 32 + 1, host.parameters);
       const screen = existsSync(reportFile) ? JSON.parse(readFileSync(reportFile, 'utf8')) : null;
       const c = screen?.checks ?? {};
+      if (screen) console.log(`    screen report: ${JSON.stringify(screen)}`);
       t.check("the plugin's screen starts", (!screenInHost || host.editor) && c.screenStarted && c.pluginEngine === true, screen?.error ?? JSON.stringify(c).slice(0, 300));
       if (screenInHost) {
         t.check('the screen shows the project the host gave the plugin', c.bpmShown === JSON.parse(got.project).bpm && c.trackNames === JSON.parse(got.project).tracks.map((x) => x.name).join('|'), `${c.bpmShown} ${c.trackNames}`);
@@ -235,7 +236,7 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
         t.check('the screen shows its project and the plugin plays it', c.bpmShown === c.pluginBpm && c.trackNames?.startsWith('Kick|'), `${c.bpmShown} / ${c.pluginBpm}`);
       }
       t.check('Play on the screen previews the beat in the plugin, with the playhead and meters moving', c.playing && c.playheadDrawn > 0 && c.cycleMoved > 0.2 && c.metersMoved > 0.01 && c.stopped, JSON.stringify({ p: c.playing, h: c.playheadDrawn, c: c.cycleMoved, m: c.metersMoved, s: c.stopped }));
-      t.check('the plugin reports what it plays to the screen', c.stateEvents > 5, c.stateEvents);
+      t.check('the plugin reports what it plays to the screen, about 30 times a second', c.stateEvents >= 20, `${c.stateEvents} a second`);
       t.check("a step changed on the screen reaches the plugin and the host's project", c.stepNowOn === !c.stepWasOn && c.pluginStepOn === c.stepNowOn, `${c.stepWasOn} -> ${c.stepNowOn}; in the plugin: ${c.pluginStepOn}`);
       if (screenInHost) {
         const after = host.projectAfterEditor ? JSON.parse(host.projectAfterEditor) : null;
