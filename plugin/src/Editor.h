@@ -27,6 +27,7 @@ private:
     std::optional<juce::WebBrowserComponent::Resource> resource(const juce::String& url);
     std::optional<juce::WebBrowserComponent::Resource> serve(const juce::String& url);
     juce::var settings() const;
+    static void writeSettings(const juce::var& s);
 
     Processor& proc_;
     std::unique_ptr<juce::WebBrowserComponent> web_;

@@ -54,8 +54,11 @@ folders, `%LOCALAPPDATA%\Programs\Common\VST3` and `%LOCALAPPDATA%\Programs\Comm
 The plugin shares the app's sample pool (`%APPDATA%\Ba-da-boom\sample-pool`), so beats with
 imported sounds play in both.
 
-## Not in the plugin yet
+## Kits and sample folders
 
-Synth tracks, the effects other than filters (vowel, crush, shape, tremolo, phaser,
-distortion), delay and reverb, sample folders and kit downloads in the screen. These come
-in the next plugin update.
+The screen's kits and sample folders work as in the app. Kit files come from the app's kit
+cache, then from the kits installed with the app (the installer records the app's folder in
+`HKCU\Software\Ba-da-boom`, `InstallLocation`), then from the internet. Sample folders are
+the plugin's own list, kept in `%APPDATA%\Ba-da-boom\plugin-settings.json`.
+
+Synth tracks, every effect, delay and reverb play as they do in the app.

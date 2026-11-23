@@ -76,7 +76,7 @@ private:
 /** BiquadFilterNode (lowpass, highpass, bandpass) with the spec's coefficient formulas. */
 class Biquad {
 public:
-    enum Type { Lowpass, Highpass, Bandpass };
+    enum Type { Lowpass, Highpass, Bandpass, Notch };
     void reset() { x1_ = x2_ = y1_ = y2_ = {0, 0}; }
     void set(Type type, double freq, double q, double sampleRate) {
         const double nyquist = sampleRate / 2;
@@ -101,6 +101,15 @@ public:
             } else {
                 b0 = (1 + c) / 2, b1 = -(1 + c), b2 = (1 + c) / 2;
             }
+            a0 = 1 + alpha, a1 = -2 * c, a2 = 1 - alpha;
+        } else if (type == Notch) {
+            // Chromium's Biquad::SetNotchParams.
+            if (f <= 0 || f >= 1) return setRaw(1, 0, 0, 1, 0, 0);
+            if (q <= 0) return setRaw(0, 0, 0, 1, 0, 0);
+            const double w0 = kPi * f;
+            const double alpha = std::sin(w0) / (2 * q);
+            const double c = std::cos(w0);
+            b0 = 1, b1 = -2 * c, b2 = 1;
             a0 = 1 + alpha, a1 = -2 * c, a2 = 1 - alpha;
         } else {
             if (f <= 0 || f >= 1) return setRaw(0, 0, 0, 1, 0, 0);
@@ -129,6 +138,49 @@ private:
     double b0_ = 1, b1_ = 0, b2_ = 0, a1_ = 0, a2_ = 0;
     std::array<double, 2> x1_{}, x2_{}, y1_{}, y2_{};
 };
+
+/**
+ * superdough's LFO worklet (worklets.mjs LFOProcessor) as one voice hears it. Worklets run in
+ * render quanta of 128 frames: a quantum that starts at or before `begin`, or at or after `end`,
+ * gives 0; the phase starts at the first quantum after `begin`.
+ */
+struct Lfo {
+    enum Shape { Tri = 0, Sine, Ramp, Saw, Square };
+    double begin = 0, end = 0, time = 0, frequency = 1, depth = 1, skew = 0.5, dcoffset = 0, curve = 1, min = -1e9, max = 1e9;
+    double phaseoffset = 0;
+    int shape = Tri;
+    /** The value at absolute frame `frame` (frames counted from the engine's time 0). Call for consecutive frames. */
+    double next(long long frame, double sampleRate) {
+        const long long q = frame - frame % 128;
+        const double qt = static_cast<double>(q) / sampleRate;
+        if (qt >= end || qt <= begin) return 0;
+        if (!started_) {
+            started_ = true;
+            const double x = time * frequency + phaseoffset;
+            phase_ = x - static_cast<long long>(x);
+        }
+        double w;
+        switch (shape) {
+            case Sine: w = std::sin(2 * kPi * phase_) * 0.5 + 0.5; break;
+            case Ramp: w = phase_; break;
+            case Saw: w = 1 - phase_; break;
+            case Square: w = phase_ >= skew ? 0 : 1; break;
+            default: w = phase_ >= skew ? 1 / (1 - skew) - phase_ / (1 - skew) : phase_ / skew;
+        }
+        double v = std::pow((w + dcoffset) * depth, curve);
+        v = std::clamp(v, min, max);
+        phase_ += frequency / sampleRate;
+        if (phase_ > 1.0) phase_ -= 1;
+        return v;
+    }
+
+private:
+    bool started_ = false;
+    double phase_ = 0;
+};
+
+/** superdough's distortion, algorithm 0 (scurve), with k = expm1(distort). */
+inline double scurve(double x, double k) { return ((1 + k) * x) / (1 + k * std::abs(x)); }
 
 /** StereoPannerNode, equal power. `pan` is -1..1. */
 inline void stereoPan(float inL, float inR, bool mono, double pan, float& outL, float& outR) {

@@ -116,6 +116,8 @@ export async function run(t) {
     await win.waitForFunction(() => window.__lastExportInfo, null, { timeout: 60000 }).catch(() => {});
     const ex = await win.evaluate(() => window.__lastExportInfo);
     t.check('the beat exports with the kit sounds (all 14 hits, audible)', ex?.events === 14 && ex.peak > 0.01, ex && `${ex.events} hits, peak ${ex.peak?.toFixed(2)}`);
+    // The result is recorded just before the dialog closes; keys go to the dialog until it has.
+    await win.waitForSelector('.modal', { state: 'detached', timeout: 10000 }).catch(() => {});
 
     await win.keyboard.press('Control+z');
     p = await project();

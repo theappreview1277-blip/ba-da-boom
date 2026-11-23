@@ -2,6 +2,9 @@
 // the plugin's sound with the app's.
 //   bdb_render <model.json> <factory folder> <pool folder> <pattern index | song> <bars> <out.wav> [sample rate]
 #include <cstdio>
+#include <cstdlib>
+#include <iterator>
+#include <memory>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -45,6 +48,35 @@ int main(int argc, char** argv) {
         std::vector<std::string> missing;
         bdb::SampleSet set = bdb::loadSamples(m, {argv[2], argv[3]}, rate, &missing);
         for (auto& k : missing) std::fprintf(stderr, "missing sound %s\n", k.c_str());
+        // BDB_NOISE=<folder>: the app's noise buffers as raw 32-bit floats: white.f32, pink.f32, brown.f32,
+        // crackle0.f32, crackle1.f32, ... (one for each crackle sound, in order) and reverb0.f32, ...
+        if (const char* dir = std::getenv("BDB_NOISE")) {
+            auto load = [&](const std::string& name) -> std::shared_ptr<const bdb::SampleData> {
+                std::ifstream nf(std::string(dir) + "/" + name + ".f32", std::ios::binary);
+                if (!nf) return nullptr;
+                const std::string bytes((std::istreambuf_iterator<char>(nf)), std::istreambuf_iterator<char>());
+                auto d = std::make_shared<bdb::SampleData>();
+                d->rate = rate;
+                d->data.assign(1, std::vector<float>(bytes.size() / 4));
+                std::memcpy(d->data[0].data(), bytes.data(), d->data[0].size() * 4);
+                return d;
+            };
+            const char* names[] = {"white", "pink", "brown"};
+            for (size_t i = 0; i < 3; i++) set.noise[i] = load(names[i]);
+            while (auto d = load("crackle" + std::to_string(set.crackles.size()))) set.crackles.push_back(d);
+            // reverb0.f32, reverb1.f32, ...: each reverb's noise, left channel then right.
+            while (auto d = load("reverb" + std::to_string(set.reverbNoise.size()))) {
+                auto two = std::make_shared<bdb::SampleData>();
+                const size_t half = d->frames() / 2;
+                two->channels = 2;
+                two->rate = rate;
+                two->data = {std::vector<float>(d->data[0].begin(), d->data[0].begin() + static_cast<long>(half)),
+                             std::vector<float>(d->data[0].begin() + static_cast<long>(half), d->data[0].end())};
+                set.reverbNoise.push_back(two);
+            }
+        }
+        // BDB_SAW_PHASES_FROM_START=1: supersaw phases seeded from each sound's start (the tests seed the app the same way).
+        if (const char* e = std::getenv("BDB_SAW_PHASES_FROM_START")) set.supersawPhasesFromStart = std::strcmp(e, "1") == 0;
         const int pattern = std::strcmp(argv[4], "song") == 0 ? -1 : std::atoi(argv[4]);
         bdb::Rendered r = bdb::renderOffline(m, set, pattern, std::atoi(argv[5]), rate);
         writeFloatWav(argv[6], r, rate);
