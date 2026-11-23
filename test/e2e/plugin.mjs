@@ -56,6 +56,8 @@ const CASES = [
   ['shape and drive', { 0: { shape: 0.6 }, 1: { drive: 2 }, 2: { shape: 0.95, drive: 0.5 } }],
   ['tremolo', { 0: { tremoloRate: 8, tremoloDepth: 0.8 }, 1: { tremoloRate: 3, tremoloDepth: 1 }, 2: { tremoloRate: 16, tremoloDepth: 0.4 } }],
   ['phaser', { 0: { phaserRate: 2, phaserDepth: 0.75 }, 1: { phaserRate: 0.5, phaserDepth: 0.3 }, 2: { phaserRate: 6, phaserDepth: 1 } }],
+  ['synth waves', { 0: { source: 'synth', wave: 'sine', note: 36 }, 1: { source: 'synth', wave: 'square', note: 48 }, 2: { source: 'synth', wave: 'sawtooth', note: 60 }, 3: { source: 'synth', wave: 'triangle', note: 72 } }],
+  ['synths with envelopes, filters and effects', { 0: { source: 'synth', wave: 'sawtooth', note: 40, pitch: 3, attack: 0.01, decay: 0.1, sustain: 0.4, release: 0.2, lowpass: 900, resonance: 6, filterEnv: 3, filterDecay: 0.15 }, 1: { source: 'synth', wave: 'square', note: 55, release: 0.05, shape: 0.5, phaserRate: 2 }, 2: { source: 'synth', wave: 'sine', note: 84, tremoloRate: 6, tremoloDepth: 0.7, pan: 0.6 } }],
   ['effects together', { 0: { lowpass: 2000, vowel: 'u', crush: 8, shape: 0.4, tremoloRate: 4, tremoloDepth: 0.5, phaserRate: 1 }, 1: { highpass: 400, drive: 1, coarse: 2, pan: -0.5 } }],
 ];
 

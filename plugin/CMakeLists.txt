@@ -13,7 +13,7 @@ include(FetchContent)
 FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa)
 FetchContent_MakeAvailable(json)
 
-add_library(bdb_core STATIC core/play_model.cpp core/scheduler.cpp core/sample.cpp core/engine.cpp core/loader.cpp core/player.cpp)
+add_library(bdb_core STATIC core/play_model.cpp core/scheduler.cpp core/sample.cpp core/engine.cpp core/oscillator.cpp core/loader.cpp core/player.cpp)
 set_target_properties(bdb_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(bdb_core PUBLIC core)
 target_link_libraries(bdb_core PUBLIC nlohmann_json::nlohmann_json)

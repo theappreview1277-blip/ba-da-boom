@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include "dsp.h"
+#include "oscillator.h"
 #include "play_model.h"
 #include "sample.h"
 #include "scheduler.h"
@@ -33,6 +34,11 @@ struct Voice {
     bool active = false;
     int track = 0;
     const SampleData* sample = nullptr;
+    bool synth = false;      // an oscillator instead of a sample
+    bool oscStarted = false;
+    Oscillator osc;
+    std::shared_ptr<const WaveTables> oscTables;
+    double oscFrequency = 0;
     double start = 0;        // seconds (engine clock) when the sound starts
     double readOffset = 0;   // frames into the sample at `start`
     double rate = 1;         // playback rate
@@ -100,6 +106,7 @@ private:
     std::array<Voice, kMaxVoices> voices_{};
     std::array<Voice*, 64> cutGroups_{};  // superdough's cutGroups, by choke group number
     SoftClipper clipper_;
+    std::array<std::shared_ptr<const WaveTables>, 4> waves_;  // sine, square, sawtooth, triangle at sr_
     std::array<float, kMaxTracks> peaks_{};
     std::array<double, kMaxTracks> trackGain_ = filled(1.0), trackGainDone_ = filled(1.0);
     static std::array<double, kMaxTracks> filled(double v) {

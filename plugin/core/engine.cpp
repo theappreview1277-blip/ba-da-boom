@@ -53,6 +53,8 @@ void paramAdsr(ParamTimeline& p, Adsr e, double min, double max, double begin, d
 
 void Engine::prepare(double sampleRate) {
     sr_ = sampleRate;
+    // The synths' wave tables, built here and not on the audio thread.
+    for (int i = 0; i < 4; i++) waves_[static_cast<size_t>(i)] = WaveTables::get(static_cast<WaveTables::Wave>(i), sr_);
     clear();
 }
 
@@ -80,11 +82,19 @@ Voice* Engine::allocate(double time) {
 void Engine::trigger(const PlayModel& m, const SampleSet& set, const Hit& h, double t, double cps) {
     if (h.track < 0 || h.track >= static_cast<int>(m.tracks.size())) return;
     const Controls& c = m.tracks[h.track].controls;
-    if (c.synth) return;  // synth tracks: not in the plugin yet
-    if (c.speed == 0) return;
-    const SampleData* sample = set.find(c.s, c.speed < 0);
-    if (!sample || sample->frames() == 0) return;
     const double hapDuration = h.length / cps;
+    int wave = -1;
+    const SampleData* sample = nullptr;
+    if (c.synth) {
+        static const char* const kWaves[] = {"sine", "square", "sawtooth", "triangle"};
+        for (int i = 0; i < 4; i++)
+            if (c.s == kWaves[i]) wave = i;
+        if (wave < 0) return;  // the other synths: not in the plugin yet
+    } else {
+        if (c.speed == 0) return;
+        sample = set.find(c.s, c.speed < 0);
+        if (!sample || sample->frames() == 0) return;
+    }
 
     Voice* v = allocate(t);
     for (auto& g : cutGroups_)
@@ -92,19 +102,35 @@ void Engine::trigger(const PlayModel& m, const SampleSet& set, const Hit& h, dou
     *v = Voice{};
     v->active = true;
     v->track = h.track;
-    v->sample = sample;
     v->start = t;
-    v->rate = std::abs(c.speed);
-    const double bufferDuration = sample->frames() / sr_;
-    v->readOffset = c.begin * bufferDuration * sr_;
-    const double playbackDuration = bufferDuration / v->rate;
-    const double sliceDuration = (c.end - c.begin) * playbackDuration;
-    const bool hasRelease = c.release >= 0;
-    const Adsr e = adsrValues(c.attack, true, c.decay, c.decay >= 0, c.sustain, c.sustain >= 0, c.release, hasRelease, nullptr);
-    const double duration = hasRelease ? hapDuration : sliceDuration;
-    const double holdEnd = t + duration;
-    paramAdsr(v->env, e, 0, 1, t, holdEnd, false);
-    v->stopAt = holdEnd + e.r + 0.01;
+    Adsr e;
+    if (c.synth) {
+        // synth.mjs: an oscillator into a 0.3 gain, then a linear ADSR held for the hap's duration.
+        static const Adsr kSynthDefaults{0.001, 0.05, 0.6, 0.01};
+        v->synth = true;
+        v->oscTables = waves_[static_cast<size_t>(wave)];
+        const double note = c.note != 0 ? c.note : 36;
+        v->oscFrequency = 440 * std::pow(2.0, (note - 69) / 12);
+        e = adsrValues(c.attack, true, c.decay, c.decay >= 0, c.sustain, c.sustain >= 0, c.release, c.release >= 0, &kSynthDefaults);
+        const double holdEnd = t + hapDuration;
+        paramAdsr(v->env, e, 0, 1, t, holdEnd, false);
+        v->stopAt = holdEnd + e.r + 0.01;
+        v->gain = 0.3;
+    } else {
+        v->sample = sample;
+        v->rate = std::abs(c.speed);
+        const double bufferDuration = sample->frames() / sr_;
+        v->readOffset = c.begin * bufferDuration * sr_;
+        const double playbackDuration = bufferDuration / v->rate;
+        const double sliceDuration = (c.end - c.begin) * playbackDuration;
+        const bool hasRelease = c.release >= 0;
+        e = adsrValues(c.attack, true, c.decay, c.decay >= 0, c.sustain, c.sustain >= 0, c.release, hasRelease, nullptr);
+        const double duration = hasRelease ? hapDuration : sliceDuration;
+        const double holdEnd = t + duration;
+        paramAdsr(v->env, e, 0, 1, t, holdEnd, false);
+        v->stopAt = holdEnd + e.r + 0.01;
+        v->gain = 1;
+    }
     v->cutGain.reset(1);
 
     if (c.cut >= 0 && c.cut < static_cast<int>(cutGroups_.size())) {
@@ -116,7 +142,7 @@ void Engine::trigger(const PlayModel& m, const SampleSet& set, const Hit& h, dou
         cutGroups_[c.cut] = v;
     }
 
-    v->gain = c.gain * h.velocity;
+    v->gain *= c.gain * h.velocity;
     v->pan = 2 * c.pan - 1;
     const int stages = c.ftype == "24db" ? 2 : 1;
     const double end = t + hapDuration;
@@ -261,11 +287,11 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
     }
     for (auto& v : voices_) {
         if (!v.active) continue;
-        const SampleData& s = *v.sample;
-        const bool mono = s.channels == 1;
-        const auto n = static_cast<double>(s.frames());
-        const float* c0 = s.data[0].data();
-        const float* c1 = mono ? c0 : s.data[1].data();
+        const SampleData* sp = v.sample;
+        const bool mono = v.synth || sp->channels == 1;
+        const auto n = v.synth ? 0.0 : static_cast<double>(sp->frames());
+        const float* c0 = v.synth ? nullptr : sp->data[0].data();
+        const float* c1 = v.synth || mono ? c0 : sp->data[1].data();
         const int ti = v.track < kMaxTracks ? v.track : 0;
         const double g0 = trackGainDone_[ti], gStep = (trackGain_[ti] - g0) / frames;
         float* tl = tracks && v.track < kMaxTracks ? tracks[2 * v.track] : nullptr;
@@ -277,17 +303,26 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
                 v.active = false;
                 break;
             }
-            const double idx = v.readOffset + (tt - v.start) * sr_ * v.rate;
-            if (idx >= n) {
-                v.active = false;
-                break;
-            }
-            const auto i0 = static_cast<size_t>(idx);
-            const double fr = idx - i0;
-            const size_t i1 = i0 + 1 < s.frames() ? i0 + 1 : i0;
             const double g = v.env.valueAt(tt) * v.cutGain.valueAt(tt) * v.gain;
-            float l = static_cast<float>(((1 - fr) * c0[i0] + fr * (i1 == i0 ? 0 : c0[i1])) * g);
-            float r = mono ? l : static_cast<float>(((1 - fr) * c1[i0] + fr * (i1 == i0 ? 0 : c1[i1])) * g);
+            float l, r;
+            if (v.synth) {
+                if (!v.oscStarted) {
+                    v.oscStarted = true;
+                    v.osc.start(v.oscTables, v.oscFrequency, sr_, (tt - v.start) * sr_);
+                }
+                l = r = static_cast<float>(v.osc.next() * g);
+            } else {
+                const double idx = v.readOffset + (tt - v.start) * sr_ * v.rate;
+                if (idx >= n) {
+                    v.active = false;
+                    break;
+                }
+                const auto i0 = static_cast<size_t>(idx);
+                const double fr = idx - i0;
+                const size_t i1 = i0 + 1 < sp->frames() ? i0 + 1 : i0;
+                l = static_cast<float>(((1 - fr) * c0[i0] + fr * (i1 == i0 ? 0 : c0[i1])) * g);
+                r = mono ? l : static_cast<float>(((1 - fr) * c1[i0] + fr * (i1 == i0 ? 0 : c1[i1])) * g);
+            }
             if (v.lpCount) {
                 if (v.lpFreq.automated()) {
                     const double fq = v.lpFreq.valueAt(tt);
