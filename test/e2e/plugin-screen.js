@@ -18,7 +18,12 @@
   const send = (name, args) =>
     new Promise((resolve) => {
       const id = 1e9 + Math.floor(Math.random() * 1e6);
-      window.__JUCE__.backend.addEventListener('bdbReply', (r) => r.id === id && resolve(r));
+      window.__JUCE__.backend.addEventListener('bdbReply', (r) => {
+        if (r.id !== id) return;
+        // Results come as base64 JSON (see Editor::reply).
+        const decode = (b64) => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))));
+        resolve({ ...r, result: r.result64 ? decode(r.result64) : null });
+      });
       window.__JUCE__.backend.emitEvent('bdb', { id, name, args });
     });
   const t0 = performance.now();

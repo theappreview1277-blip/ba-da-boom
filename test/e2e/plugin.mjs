@@ -236,6 +236,7 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
         t.check('the screen shows its project and the plugin plays it', c.bpmShown === c.pluginBpm && c.trackNames?.startsWith('Kick|'), `${c.bpmShown} / ${c.pluginBpm}`);
       }
       t.check('Play on the screen previews the beat in the plugin, with the playhead and meters moving', c.playing && c.playheadDrawn > 0 && c.cycleMoved > 0.2 && c.metersMoved > 0.01 && c.stopped, JSON.stringify({ p: c.playing, h: c.playheadDrawn, c: c.cycleMoved, m: c.metersMoved, s: c.stopped }));
+      t.check('the plugin answers the screen at once, even with a whole project', c.getStateMs < 250, `${c.getStateMs} ms`);
       t.check('the plugin reports what it plays to the screen, about 30 times a second', c.stateEvents >= 20, `${c.stateEvents} a second`);
       if (!(c.stateEvents >= 20)) {
         // The plugin's trace: how long its answers and files took, and how often its status timer ran.

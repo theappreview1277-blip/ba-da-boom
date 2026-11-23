@@ -40,11 +40,11 @@ let lastState: PluginState = { playing: false, cycle: 0, songEntry: -1, pattern:
 
 if (inPlugin) {
   const b = backend()!;
-  b.addEventListener('bdbReply', (r: { id: number; ok: boolean; result?: unknown; error?: string }) => {
+  b.addEventListener('bdbReply', (r: { id: number; ok: boolean; result64?: string; error?: string }) => {
     const p = pending.get(r.id);
     if (!p) return;
     pending.delete(r.id);
-    if (r.ok) p.resolve(r.result ?? null);
+    if (r.ok) p.resolve(r.result64 ? fromReply(r.result64) : null);
     else p.reject(new Error(r.error ?? 'The plugin could not do that.'));
   });
   b.addEventListener('bdbState', (s: PluginState) => {
@@ -88,6 +88,14 @@ export function onPluginState(fn: (s: PluginState) => void) {
 export function onProjectReplaced(fn: () => void) {
   projectListeners.add(fn);
   return () => projectListeners.delete(fn);
+}
+
+/** A reply's result: JSON, sent as base64 (see Editor::reply). */
+export function fromReply(b64: string): unknown {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(bytes)) ?? null;
 }
 
 export function toBase64(bytes: Uint8Array): string {

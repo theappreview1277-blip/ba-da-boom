@@ -131,7 +131,10 @@ juce::var Editor::settings() const {
 }
 
 void Editor::reply(const juce::var& id, bool ok, const juce::var& result) {
-    web_->emitEventIfBrowserIsVisible("bdbReply", ok ? obj({{"id", id}, {"ok", true}, {"result", result}}) : obj({{"id", id}, {"ok", false}, {"error", result}}));
+    // The result goes as base64 JSON. JUCE escapes every backslash and quote of an event's text
+    // one by one, which takes seconds for a project's text (itself JSON); base64 has none.
+    const auto text = juce::JSON::toString(result, true);
+    web_->emitEventIfBrowserIsVisible("bdbReply", ok ? obj({{"id", id}, {"ok", true}, {"result64", juce::Base64::toBase64(text)}}) : obj({{"id", id}, {"ok", false}, {"error", result}}));
 }
 
 void Editor::timerCallback() {
