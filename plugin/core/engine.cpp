@@ -1,6 +1,7 @@
 #include "engine.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace bdb {
 
@@ -49,13 +50,74 @@ void paramAdsr(ParamTimeline& p, Adsr e, double min, double max, double begin, d
     }
     ramp(min, end + e.r);
 }
+// worklets.mjs waveshapes.sawblep: a saw with polyBLEP smoothing at the jump.
+double sawBlep(double phase, double dt) {
+    dt = std::min(dt, 1 - dt);
+    const double invdt = 1 / dt;
+    double blep = 0;
+    if (phase < dt) {
+        const double p = phase * invdt;
+        blep = 2 * p - p * p - 1;
+    } else if (phase > 1 - dt) {
+        const double p = (phase - 1) * invdt;
+        blep = p * p + 2 * p + 1;
+    }
+    return 2 * phase - 1 - blep;
+}
 }  // namespace
 
 void Engine::prepare(double sampleRate) {
     sr_ = sampleRate;
     // The synths' wave tables, built here and not on the audio thread.
     for (int i = 0; i < 4; i++) waves_[static_cast<size_t>(i)] = WaveTables::get(static_cast<WaveTables::Wave>(i), sr_);
+    // noise.mjs getNoiseBuffer, 2 seconds each.
+    const auto size = static_cast<size_t>(2 * sr_);
+    auto fresh = [&](SampleData& d) {
+        d.channels = 1;
+        d.rate = sr_;
+        d.data.assign(1, std::vector<float>(size));
+        return d.data[0].data();
+    };
+    float* white = fresh(noise_[0]);
+    for (size_t i = 0; i < size; i++) white[i] = static_cast<float>(random() * 2 - 1);
+    float* pink = fresh(noise_[1]);
+    double b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (size_t i = 0; i < size; i++) {
+        const double w = random() * 2 - 1;
+        b0 = 0.99886 * b0 + w * 0.0555179;
+        b1 = 0.99332 * b1 + w * 0.0750759;
+        b2 = 0.969 * b2 + w * 0.153852;
+        b3 = 0.8665 * b3 + w * 0.3104856;
+        b4 = 0.55 * b4 + w * 0.5329522;
+        b5 = -0.7616 * b5 - w * 0.016898;
+        // the buffer is Float32, so the sum is rounded before the 0.11
+        const auto sum = static_cast<float>(b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362);
+        pink[i] = static_cast<float>(sum * 0.11);
+        b6 = w * 0.115926;
+    }
+    float* brown = fresh(noise_[2]);
+    float last = 0;
+    for (size_t i = 0; i < size; i++) {
+        const double w = random() * 2 - 1;
+        brown[i] = last = static_cast<float>((last + 0.02 * w) / 1.02);
+    }
+    for (auto& cr : crackle_) {
+        float* d = fresh(cr);
+        const double probability = 0.02 * 0.01;  // density 0.02
+        for (size_t i = 0; i < size; i++) d[i] = random() < probability ? static_cast<float>(random() * 2 - 1) : 0.0f;
+    }
+    // synth.mjs makeSaturationCurve(2, sampleRate) for the synth kick's shaper.
+    kickCurve_.resize(static_cast<size_t>(sr_));
+    for (size_t i = 0; i < kickCurve_.size(); i++) kickCurve_[i] = static_cast<float>(std::tanh((i * 2.0 / kickCurve_.size() - 1) * 2));
     clear();
+}
+
+double Engine::random(uint64_t& state) {
+    uint64_t z = (state += 0x9e3779b97f4a7c15ull);
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
+    z ^= z >> 31;
+    return static_cast<double>(z >> 11) * 0x1.0p-53;
 }
 
 void Engine::clear() {
@@ -85,17 +147,30 @@ void Engine::trigger(const PlayModel& m, const SampleSet& set, const Hit& h, dou
     const double hapDuration = h.length / cps;
     int wave = -1;
     const SampleData* sample = nullptr;
+    int source = Voice::Sample;
     if (c.synth) {
         static const char* const kWaves[] = {"sine", "square", "sawtooth", "triangle"};
+        static const char* const kNoises[] = {"white", "pink", "brown"};
         for (int i = 0; i < 4; i++)
-            if (c.s == kWaves[i]) wave = i;
-        if (wave < 0) return;  // the other synths: not in the plugin yet
+            if (c.s == kWaves[i]) wave = i, source = Voice::Wave;
+        for (int i = 0; i < 3; i++)
+            if (c.s == kNoises[i]) sample = noiseBuffer(set, i), source = Voice::Noise;
+        if (c.s == "crackle") {
+            const auto k = static_cast<size_t>(crackles_++);
+            sample = k < set.crackles.size() ? set.crackles[k].get() : &crackle_[k % crackle_.size()];
+            source = Voice::Noise;
+        }
+        if (c.s == "supersaw") source = Voice::Supersaw;
+        if (c.s == "pulse") source = Voice::Pulse;
+        if (c.s == "sbd") source = Voice::Kick;
+        if (source == Voice::Sample) return;  // not a sound superdough knows
     } else {
         if (c.speed == 0) return;
         sample = set.find(c.s, c.speed < 0);
         if (!sample || sample->frames() == 0) return;
     }
 
+    Adsr e{0, 0, 1, 0};
     Voice* v = allocate(t);
     for (auto& g : cutGroups_)
         if (g == v) g = nullptr;
@@ -103,19 +178,79 @@ void Engine::trigger(const PlayModel& m, const SampleSet& set, const Hit& h, dou
     v->active = true;
     v->track = h.track;
     v->start = t;
-    Adsr e;
-    if (c.synth) {
-        // synth.mjs: an oscillator into a 0.3 gain, then a linear ADSR held for the hap's duration.
-        static const Adsr kSynthDefaults{0.001, 0.05, 0.6, 0.01};
+    v->source = source;
+    // helpers.mjs getFrequencyFromValue: the note, or C2 (29 for the synth kick).
+    const double note = c.note != 0 ? c.note : source == Voice::Kick ? 29 : 36;
+    const double frequency = 440 * std::pow(2.0, (note - 69) / 12);
+    if (source == Voice::Kick) {
+        // synth.mjs 'sbd': no ADSR; the triangle's own decay, a noise click and a 10 ms fade at the end.
+        const double decay = c.decay >= 0 ? c.decay : 0.5, pdecay = 0.5, penv = 36, attackhold = 0.02;
         v->synth = true;
-        v->oscTables = waves_[static_cast<size_t>(wave)];
-        const double note = c.note != 0 ? c.note : 36;
-        v->oscFrequency = 440 * std::pow(2.0, (note - 69) / 12);
+        v->oscTables = waves_[WaveTables::Triangle];
+        v->oscFrequency = frequency;
+        // Blink starts a source at the first frame at or after its time (audio_utilities TimeToSampleFrame).
+        // The detune param is first worked out in the render quantum holding that frame, and events
+        // already past by then move to the quantum's start (AudioParamTimeline's new-event clamping).
+        v->kickStartFrame = static_cast<long long>(std::ceil(std::round(t * sr_ * 1024) / 1024));
+        v->kickFirstQuantum = v->kickStartFrame - v->kickStartFrame % 128;
+        v->kickDetune.reset(0);
+        v->kickDetune.setValueAtTime(penv * 100, 0);
+        v->kickDetune.setValueAtTime(penv * 100, std::max(t, v->kickFirstQuantum / sr_));
+        v->kickDetune.exponentialRampToValueAtTime(0.001, t + pdecay);
+        v->kickGain.reset(1);
+        v->kickGain.setValueAtTime(1, t + attackhold);
+        v->kickGain.exponentialRampToValueAtTime(0.001, t + attackhold + decay);
+        v->kickNoiseGain.reset(1);
+        v->kickNoiseGain.setValueAtTime(1.2, t);
+        v->kickNoiseGain.exponentialRampToValueAtTime(0.001, t + 0.025);
+        const double end = t + decay + 0.01;
+        v->kickMix.reset(1);
+        v->kickMix.setValueAtTime(1, end - 0.01);
+        v->kickMix.linearRampToValueAtTime(0, end);
+        v->sample = noiseBuffer(set, 2);
+        v->env.reset(1);
+        v->stopAt = end;
+        v->gain = 1;
+    } else if (c.synth) {
+        // synth.mjs: the source into a gain, then a linear ADSR held for the hap's duration.
+        static const Adsr kSynthDefaults{0.001, 0.05, 0.6, 0.01};
         e = adsrValues(c.attack, true, c.decay, c.decay >= 0, c.sustain, c.sustain >= 0, c.release, c.release >= 0, &kSynthDefaults);
         const double holdEnd = t + hapDuration;
         paramAdsr(v->env, e, 0, 1, t, holdEnd, false);
         v->stopAt = holdEnd + e.r + 0.01;
-        v->gain = 0.3;
+        v->synth = source != Voice::Noise;
+        if (source == Voice::Wave) {
+            v->oscTables = waves_[static_cast<size_t>(wave)];
+            v->oscFrequency = frequency;
+            v->gain = 0.3;
+        } else if (source == Voice::Supersaw) {
+            // 5 voices (unison), detune 0.18, spread 0.6; 0.3 / sqrt(voices) at the envelope's peak.
+            // AudioParams are 32-bit floats; worklets.mjs getDetuner spreads the voices over freqspread semitones.
+            const double f = static_cast<float>(frequency), spread = static_cast<float>(0.18);
+            uint64_t fromStart = 0;
+            if (set.supersawPhasesFromStart) {
+                const auto begin = static_cast<float>(t);
+                uint32_t bits;
+                std::memcpy(&bits, &begin, 4);
+                fromStart = 0x2545f4914f6cdd1dull ^ bits;
+            }
+            for (size_t n = 0; n < v->sawPhase.size(); n++) {
+                v->sawPhase[n] = random(set.supersawPhasesFromStart ? fromStart : sawRandom_);
+                const double freqVoice = f * std::pow(2.0, (n * (spread / 4) - spread * 0.5) / 12);
+                const double dt = freqVoice * (1 / sr_);
+                v->sawDt[n] = dt - std::floor(dt);
+            }
+            v->gain = 0.3 / std::sqrt(5.0);
+        } else if (source == Voice::Pulse) {
+            v->oscFrequency = static_cast<float>(frequency);
+            v->pulseWidth = (1 - 0.5) * 3.14159265358979323846;  // pw 0.5
+            v->gain = 1;
+        } else {  // noise: a looped 2 s buffer into a 0.3 gain
+            v->sample = sample;
+            v->loop = true;
+            v->rate = 1;
+            v->gain = 0.3;
+        }
     } else {
         v->sample = sample;
         v->rate = std::abs(c.speed);
@@ -172,7 +307,8 @@ void Engine::trigger(const PlayModel& m, const SampleSet& set, const Hit& h, dou
         v->bpFreq = c.bandf;
         for (int i = 0; i < stages; i++) v->bp[i].set(Biquad::Bandpass, c.bandf, v->bpQ, sr_);
     }
-    setEffects(*v, c, h, t, end + e.r, cps);
+    // superdough.mjs: endWithRelease = end + release (0.01 when not set).
+    setEffects(*v, c, h, t, end + (c.release >= 0 ? c.release : 0.01), cps);
 }
 
 namespace {
@@ -288,10 +424,13 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
     for (auto& v : voices_) {
         if (!v.active) continue;
         const SampleData* sp = v.sample;
-        const bool mono = v.synth || sp->channels == 1;
-        const auto n = v.synth ? 0.0 : static_cast<double>(sp->frames());
-        const float* c0 = v.synth ? nullptr : sp->data[0].data();
-        const float* c1 = v.synth || mono ? c0 : sp->data[1].data();
+        // Oscillators and the kick are mono; the supersaw and pulse worklets give two channels.
+        const bool mono = v.source == Voice::Supersaw || v.source == Voice::Pulse ? false
+                          : v.source == Voice::Wave || v.source == Voice::Kick ? true
+                                                                                : sp->channels == 1;
+        const auto n = sp ? static_cast<double>(sp->frames()) : 0.0;
+        const float* c0 = sp ? sp->data[0].data() : nullptr;
+        const float* c1 = mono || !sp ? c0 : sp->data[1].data();
         const int ti = v.track < kMaxTracks ? v.track : 0;
         const double g0 = trackGainDone_[ti], gStep = (trackGain_[ti] - g0) / frames;
         float* tl = tracks && v.track < kMaxTracks ? tracks[2 * v.track] : nullptr;
@@ -305,21 +444,96 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
             }
             const double g = v.env.valueAt(tt) * v.cutGain.valueAt(tt) * v.gain;
             float l, r;
-            if (v.synth) {
+            const long long frame = std::llround(tt * sr_);
+            // Worklets run whole 128-frame render quanta; currentTime is the quantum's start.
+            const long long quantumFrame = frame % 128;
+            const double quantumTime = static_cast<double>(frame - quantumFrame) / sr_;
+            const bool quantumOn = quantumTime > v.start && quantumTime < v.stopAt;
+            if (v.source == Voice::Wave) {
                 if (!v.oscStarted) {
                     v.oscStarted = true;
                     v.osc.start(v.oscTables, v.oscFrequency, sr_, (tt - v.start) * sr_);
                 }
                 l = r = static_cast<float>(v.osc.next() * g);
+            } else if (v.source == Voice::Supersaw) {
+                float sl = 0, sr = 0;
+                if (quantumOn) {
+                    const double pan = static_cast<float>(0.6) * 0.5 + 0.5;
+                    double gl = std::sqrt(1 - pan), gr = std::sqrt(pan);
+                    for (size_t k = 0; k < v.sawPhase.size(); k++) {
+                        double& ph = v.sawPhase[k];
+                        const double s = sawBlep(ph, v.sawDt[k]);
+                        sl = static_cast<float>(sl + s * gl);
+                        sr = static_cast<float>(sr + s * gr);
+                        ph += v.sawDt[k];
+                        if (ph >= 1) ph -= 1;
+                        std::swap(gl, gr);
+                    }
+                }
+                l = static_cast<float>(sl * g);
+                r = static_cast<float>(sr * g);
+            } else if (v.source == Voice::Pulse) {
+                float o = 0;
+                if (quantumOn) {
+                    constexpr double pi = 3.14159265358979323846;
+                    if (quantumFrame == 0) v.pulseEnv = 1;  // `let env = 1` in every process() call
+                    const double freq = v.oscFrequency;
+                    v.dphif += 0.1 * (freq * 2 * pi * (1 / sr_) - v.dphif);
+                    v.pulseEnv *= 0.9998;
+                    v.envf += 0.1 * (v.pulseEnv - v.envf);
+                    const double b = std::max(0.0, 2.3 * (1 - 0.0001 * freq));
+                    v.phi += v.dphif;
+                    if (v.phi >= pi) v.phi -= 2 * pi;
+                    const double out0 = std::cos(v.phi + b * v.y0);
+                    v.y0 = 0.5 * (out0 + v.y0);
+                    const double out1 = std::cos(v.phi + b * v.y1 + v.pulseWidth);
+                    v.y1 = 0.5 * (out1 + v.y1);
+                    o = static_cast<float>(0.15 * (out0 - out1) * v.envf);
+                }
+                l = r = static_cast<float>(o * g);
+            } else if (v.source == Voice::Kick) {
+                // The triangle's detune is a-rate. Blink's a-rate path starts at phase 0 (no sub-frame offset),
+                // picks the tables per frame from the increment, and in the first quantum reads the increments
+                // from the quantum's start, not from the start frame.
+                const long long q = v.kickFirstQuantum;
+                const long long at = frame < q + 128 ? q + (frame - v.kickStartFrame) : frame;
+                if (!v.oscStarted) {
+                    v.oscStarted = true;
+                    v.osc.start(v.oscTables, 0, sr_, 0);
+                }
+                const auto detune = static_cast<float>(v.kickDetune.valueAt(at / sr_));
+                const float scale = static_cast<float>(v.oscTables->rateScale()) * static_cast<float>(v.oscFrequency);
+                v.osc.setIncrement(std::exp2(detune * (1.0f / 1200)) * scale);
+                const float x = v.osc.next();
+                // WaveShaperNode, no oversampling: the curve read with linear interpolation.
+                const double cl = static_cast<double>(kickCurve_.size() - 1);
+                const double ci = cl * 0.5 * (x + 1.0);
+                float shaped;
+                if (ci < 0) shaped = kickCurve_.front();
+                else if (ci >= cl) shaped = kickCurve_.back();
+                else {
+                    const auto k = static_cast<size_t>(ci);
+                    const auto fr = static_cast<float>(ci - k);
+                    shaped = (1 - fr) * kickCurve_[k] + fr * kickCurve_[k + 1];
+                }
+                const auto tone = static_cast<float>(shaped * v.kickGain.valueAt(tt));
+                double idx = (tt - v.start) * sr_;
+                idx -= std::floor(idx / n) * n;
+                const auto i0 = static_cast<size_t>(idx);
+                const double fr = idx - i0;
+                const size_t i1 = i0 + 1 < sp->frames() ? i0 + 1 : 0;
+                const auto noise = static_cast<float>(((1 - fr) * c0[i0] + fr * c0[i1]) * v.kickNoiseGain.valueAt(tt));
+                l = r = static_cast<float>((tone + noise) * v.kickMix.valueAt(tt) * g);
             } else {
-                const double idx = v.readOffset + (tt - v.start) * sr_ * v.rate;
+                double idx = v.readOffset + (tt - v.start) * sr_ * v.rate;
+                if (v.loop) idx -= std::floor(idx / n) * n;
                 if (idx >= n) {
                     v.active = false;
                     break;
                 }
                 const auto i0 = static_cast<size_t>(idx);
                 const double fr = idx - i0;
-                const size_t i1 = i0 + 1 < sp->frames() ? i0 + 1 : i0;
+                const size_t i1 = i0 + 1 < sp->frames() ? i0 + 1 : v.loop ? 0 : i0;
                 l = static_cast<float>(((1 - fr) * c0[i0] + fr * (i1 == i0 ? 0 : c0[i1])) * g);
                 r = mono ? l : static_cast<float>(((1 - fr) * c1[i0] + fr * (i1 == i0 ? 0 : c1[i1])) * g);
             }
@@ -341,7 +555,6 @@ void Engine::render(double time, int frames, float* mixL, float* mixR, float* co
                 l = v.bp[k].process(l, 0);
                 if (!mono) r = v.bp[k].process(r, 1);
             }
-            const long long frame = std::llround(tt * sr_);
             effects(v, frame, mono, l, r);
             float ol, orr;
             stereoPan(l, mono ? l : r, mono, v.pan, ol, orr);

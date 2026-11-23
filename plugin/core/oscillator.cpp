@@ -119,6 +119,12 @@ void Oscillator::start(std::shared_ptr<const WaveTables> tables, double frequenc
     index_ = lateFrames * incr_;
 }
 
+void Oscillator::setIncrement(float incr) {
+    const float invRateScale = 1 / static_cast<float>(tables_->rateScale());
+    tables_->forFrequency(invRateScale * incr, lower_, higher_, tableFactor_);
+    incr_ = incr;
+}
+
 float Oscillator::next() {
     const int size = tables_->size();
     const double fl = std::floor(index_);

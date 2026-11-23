@@ -3,6 +3,7 @@
 // stereo mix and one stereo output per track.
 #pragma once
 #include <array>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -20,6 +21,15 @@ struct SampleSet {
     std::map<std::string, std::shared_ptr<const SampleData>> sounds;
     /** Reversed copies, for tracks that play backwards. */
     std::map<std::string, std::shared_ptr<const SampleData>> reversedSounds;
+    /** White, pink and brown noise buffers to use instead of the engine's own (the tests pass the app's). */
+    std::array<std::shared_ptr<const SampleData>, 3> noise;
+    /** Crackle buffers for the crackle sounds in turn, instead of the engine's own (the tests pass the app's). */
+    std::vector<std::shared_ptr<const SampleData>> crackles;
+    /**
+     * Tests: start each supersaw's voices at phases drawn from its start time (as a 32-bit float, the
+     * worklet's `begin`), the way the tests seed the app's worklet, instead of from the running sequence.
+     */
+    bool supersawPhasesFromStart = false;
     const SampleData* find(const std::string& key, bool reverse) const {
         auto& m = reverse ? reversedSounds : sounds;
         auto it = m.find(key);
@@ -34,11 +44,22 @@ struct Voice {
     bool active = false;
     int track = 0;
     const SampleData* sample = nullptr;
-    bool synth = false;      // an oscillator instead of a sample
+    enum Source { Sample = 0, Wave, Supersaw, Pulse, Noise, Kick };
+    int source = Sample;     // Noise plays a looped engine-made buffer through the sample path
+    bool synth = false;      // made by the engine instead of read from a sample (Wave, Supersaw, Pulse, Kick)
+    bool loop = false;       // the sample loops (noise)
     bool oscStarted = false;
     Oscillator osc;
     std::shared_ptr<const WaveTables> oscTables;
     double oscFrequency = 0;
+    // supersaw (worklets.mjs SuperSawOscillatorProcessor, 5 voices)
+    std::array<double, 5> sawPhase{}, sawDt{};
+    // pulse (worklets.mjs PulseOscillatorProcessor)
+    double phi = -3.14159265358979323846, y0 = 0, y1 = 0, dphif = 0, envf = 0, pulseEnv = 1, pulseWidth = 0;
+    // sbd (synth.mjs): a pitch-swept triangle through a tanh shaper, plus a brown noise click
+    ParamTimeline kickDetune, kickGain, kickNoiseGain, kickMix;
+    long long kickStartFrame = 0, kickFirstQuantum = 0;
+    double kickNoiseRead = 0;
     double start = 0;        // seconds (engine clock) when the sound starts
     double readOffset = 0;   // frames into the sample at `start`
     double rate = 1;         // playback rate
@@ -107,6 +128,20 @@ private:
     std::array<Voice*, 64> cutGroups_{};  // superdough's cutGroups, by choke group number
     SoftClipper clipper_;
     std::array<std::shared_ptr<const WaveTables>, 4> waves_;  // sine, square, sawtooth, triangle at sr_
+    // noise.mjs getNoiseBuffer: 2 s of white, pink and brown noise, and a few crackles (made fresh for
+    // every sound in superdough; here taken in turn).
+    std::array<SampleData, 3> noise_;
+    std::array<SampleData, 4> crackle_;
+    long long crackles_ = 0;  // crackle sounds started so far
+    std::vector<float> kickCurve_;  // synth.mjs makeSaturationCurve(2, sampleRate)
+    uint64_t random_ = 0x9e3779b97f4a7c15ull;     // for the noise buffers
+    uint64_t sawRandom_ = 0x2545f4914f6cdd1dull;  // for the supersaw voices' phases
+    static double random(uint64_t& state);         // 0..1, like Math.random (splitmix64)
+    double random() { return random(random_); }
+    const SampleData* noiseBuffer(const SampleSet& set, int type) const {
+        const auto& given = set.noise[static_cast<size_t>(type)];
+        return given && given->frames() ? given.get() : &noise_[static_cast<size_t>(type)];
+    }
     std::array<float, kMaxTracks> peaks_{};
     std::array<double, kMaxTracks> trackGain_ = filled(1.0), trackGainDone_ = filled(1.0);
     static std::array<double, kMaxTracks> filled(double v) {

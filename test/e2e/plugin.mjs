@@ -7,7 +7,7 @@
 // bdb_render comes from the plugin build: BDB_RENDER=<path>, or build-core/bdb_render
 // next to the repository.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -58,6 +58,13 @@ const CASES = [
   ['phaser', { 0: { phaserRate: 2, phaserDepth: 0.75 }, 1: { phaserRate: 0.5, phaserDepth: 0.3 }, 2: { phaserRate: 6, phaserDepth: 1 } }],
   ['synth waves', { 0: { source: 'synth', wave: 'sine', note: 36 }, 1: { source: 'synth', wave: 'square', note: 48 }, 2: { source: 'synth', wave: 'sawtooth', note: 60 }, 3: { source: 'synth', wave: 'triangle', note: 72 } }],
   ['synths with envelopes, filters and effects', { 0: { source: 'synth', wave: 'sawtooth', note: 40, pitch: 3, attack: 0.01, decay: 0.1, sustain: 0.4, release: 0.2, lowpass: 900, resonance: 6, filterEnv: 3, filterDecay: 0.15 }, 1: { source: 'synth', wave: 'square', note: 55, release: 0.05, shape: 0.5, phaserRate: 2 }, 2: { source: 'synth', wave: 'sine', note: 84, tremoloRate: 6, tremoloDepth: 0.7, pan: 0.6 } }],
+  ['pulse', { 1: { source: 'synth', wave: 'pulse', note: 45 }, 2: { source: 'synth', wave: 'pulse', note: 69, release: 0.1, lowpass: 2500 } }],
+  // The noises (and the kick's click) play the app's own noise buffers, handed to the renderer.
+  ['the synth kick', { 0: { source: 'synth', wave: 'sbd' }, 3: { source: 'synth', wave: 'sbd', note: 33, decay: 0.2 } }],
+  ['white, pink and brown noise', { 0: { source: 'synth', wave: 'white' }, 1: { source: 'synth', wave: 'pink', release: 0.2 }, 2: { source: 'synth', wave: 'brown', attack: 0.02, lowpass: 3000 } }],
+  ['crackle', { 3: { source: 'synth', wave: 'crackle', release: 0.3 } }],
+  // Its voices start at Math.random phases; the test gives the app's worklets the plugin's random numbers.
+  ['supersaw', { 0: { source: 'synth', wave: 'supersaw', note: 48 }, 1: { source: 'synth', wave: 'supersaw', note: 60, release: 0.2, pan: 0.6 }, 3: { source: 'synth', wave: 'supersaw', note: 72, lowpass: 3000 } }],
   ['effects together', { 0: { lowpass: 2000, vowel: 'u', crush: 8, shape: 0.4, tremoloRate: 4, tremoloDepth: 0.5, phaserRate: 1 }, 1: { highpass: 400, drive: 1, coarse: 2, pan: -0.5 } }],
 ];
 
@@ -122,8 +129,82 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
         });
       });
       window.__parityBase = p;
-      window.__parityFactory = structuredClone(p);  // the factory kit, for the host test (its pool is the app's, not the test profile's)
+      // superdough makes each noise synth's 2-second buffer with Math.random (white, pink and brown
+      // once, crackle for every sound). Note each one made, so the plugin's render can play the same.
+      window.__noiseMade = [];
+      const make = BaseAudioContext.prototype.createBuffer;
+      BaseAudioContext.prototype.createBuffer = function (channels, length, rate) {
+        const b = make.call(this, channels, length, rate);
+        if (channels === 1 && length === 2 * rate) window.__noiseMade.push(b);
+        return b;
+      };
+      // The supersaw worklet starts its voices at Math.random phases. Seed them from each sound's start
+      // time (its `begin` parameter) with splitmix64, as the renderer does with BDB_SAW_PHASES_FROM_START,
+      // so the two can match sample for sample whatever order the worklets run in.
+      const seeded = `{
+        const M = (1n << 64n) - 1n;
+        let s = 0n;
+        Math.random = () => {
+          s = (s + 0x9e3779b97f4a7c15n) & M;
+          let z = s;
+          z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & M;
+          z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & M;
+          z ^= z >> 31n;
+          return Number(z >> 11n) / 2 ** 53;
+        };
+        const bits = new Uint32Array(1), asFloat = new Float32Array(bits.buffer);
+        const register = globalThis.registerProcessor;
+        globalThis.registerProcessor = (name, Processor) => {
+          if (name !== 'supersaw-oscillator') return register(name, Processor);
+          class Seeded extends Processor {
+            process(inputs, outputs, params) {
+              asFloat[0] = params.begin[0];
+              s = 0x2545f4914f6cdd1dn ^ BigInt(bits[0]);
+              return super.process(inputs, outputs, params);
+            }
+          }
+          return register(name, Seeded);
+        };
+      }`;
+      const addModule = AudioWorklet.prototype.addModule;
+      const firsts = new WeakSet();
+      AudioWorklet.prototype.addModule = async function (url, options) {
+        if (!firsts.has(this)) {
+          firsts.add(this);
+          await addModule.call(this, `data:text/javascript,${encodeURIComponent(seeded)}`);
+        }
+        return addModule.call(this, url, options);
+      };
+      window.__parityFactory = structuredClone(p);
+      window.__b64 = (f) => {
+        const u = new Uint8Array(f.buffer, f.byteOffset, f.byteLength);
+        let s = '';
+        for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
+        return btoa(s);
+      };  // the factory kit, for the host test (its pool is the app's, not the test profile's)
     });
+
+    // Make (and keep) the white, pink and brown buffers, one short render each.
+    const noise = await win.evaluate(async () => {
+      const { renderPattern } = window.__bdb;
+      const out = [];
+      for (const wave of ['white', 'pink', 'brown']) {
+        const p = structuredClone(window.__parityBase);
+        const pat = p.patterns.find((x) => x.id === p.currentPatternId);
+        p.tracks.forEach((tr, i) => pat.lanes[tr.id].steps.forEach((st, j) => (st.on = i === 0 && j === 0)));
+        p.tracks[0].sound = { ...p.tracks[0].sound, source: 'synth', wave };
+        window.__noiseMade = [];
+        await renderPattern(p, { patternId: p.currentPatternId, bars: 1, missingSamples: new Set() });
+        out.push(window.__noiseMade.length === 1 ? window.__b64(window.__noiseMade[0].getChannelData(0)) : null);
+      }
+      return out;
+    });
+    t.check('the app made one buffer for each noise', noise.every(Boolean), noise.map((x) => (x ? 'made' : 'none')).join('/'));
+    const noiseFiles = (to, crackles = []) => {
+      mkdirSync(to, { recursive: true });
+      ['white', 'pink', 'brown'].forEach((type, i) => noise[i] && writeFileSync(join(to, `${type}.f32`), Buffer.from(noise[i], 'base64')));
+      crackles.forEach((c, i) => writeFileSync(join(to, `crackle${i}.f32`), Buffer.from(c, 'base64')));
+    };
 
     const runCase = async (name, patch, bars = 2) => {
       const got = await win.evaluate(
@@ -131,33 +212,37 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
           const { renderPattern, playModel } = window.__bdb;
           const p = structuredClone(window.__parityBase);
           for (const [i, s] of Object.entries(patch)) p.tracks[i].sound = { ...p.tracks[i].sound, ...s };
+          window.__noiseMade = [];
           const r = await renderPattern(p, { patternId: p.currentPatternId, bars, missingSamples: new Set() });
-          const b64 = (f) => {
-            const u = new Uint8Array(f.buffer, f.byteOffset, f.byteLength);
-            let s = '';
-            for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
-            return btoa(s);
-          };
+          const b64 = window.__b64;
           const model = playModel(p);
-          return { model, pattern: model.currentPattern, events: r.events, rate: r.buffer.sampleRate, ch: [0, 1].map((c) => b64(r.buffer.getChannelData(c))) };
+          const crackles = window.__noiseMade.map((b) => b64(b.getChannelData(0)));
+          return { model, pattern: model.currentPattern, events: r.events, rate: r.buffer.sampleRate, crackles, ch: [0, 1].map((c) => b64(r.buffer.getChannelData(c))) };
         },
         [patch, bars],
       );
       const file = join(dir, `${CASES.findIndex((c) => c[0] === name)}`);
+      noiseFiles(`${file}-noise`, got.crackles);
       writeFileSync(`${file}.json`, JSON.stringify(got.model));
-      const out = spawnSync(RENDER, [`${file}.json`, FACTORY, join(profile, 'sample-pool'), String(got.pattern), String(bars), `${file}.wav`, String(got.rate)], { encoding: 'utf8' });
+      const out = spawnSync(RENDER, [`${file}.json`, FACTORY, join(profile, 'sample-pool'), String(got.pattern), String(bars), `${file}.wav`, String(got.rate)], {
+        encoding: 'utf8',
+        env: { ...process.env, BDB_NOISE: `${file}-noise`, BDB_SAW_PHASES_FROM_START: '1' },
+      });
       if (out.status !== 0) return { error: out.stderr || `exit ${out.status}` };
       const info = JSON.parse(out.stdout.trim().split('\n').at(-1));
       const appCh = got.ch.map(fromBase64);
       const plugCh = readFloatWav(`${file}.wav`);
       return { db: residualDb(appCh, plugCh), events: [got.events, info.events], frames: [appCh[0].length, plugCh[0].length] };
     };
+    const only = process.env.BDB_PARITY_ONLY;
 
     for (const [name, patch] of CASES) {
+      if (only && !new RegExp(only).test(name)) continue;
       const r = await runCase(name, patch);
       const ok = !r.error && r.events[0] === r.events[1] && Math.abs(r.frames[0] - r.frames[1]) <= TAIL_FRAMES && r.db < limitDb;
       t.check(`sounds like the app: ${name}`, ok, r.error ?? `${r.db.toFixed(1)} dB, events ${r.events.join('/')}, frames ${r.frames.join('/')}`);
     }
+    if (only) return;
 
     // The Acoustic Kit's stereo recordings, from the sample pool.
     await win.selectOption('select[aria-label=Kit]', 'AcousticKit');

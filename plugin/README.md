@@ -56,6 +56,5 @@ imported sounds play in both.
 
 ## Not in the plugin yet
 
-Synth tracks, the effects other than filters (vowel, crush, shape, tremolo, phaser,
-distortion), delay and reverb, sample folders and kit downloads in the screen. These come
-in the next plugin update.
+Delay and reverb, sample folders and kit downloads in the screen. These come in the next
+plugin update. (Synth tracks and every other effect play as they do in the app.)
