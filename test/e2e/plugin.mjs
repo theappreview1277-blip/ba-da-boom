@@ -328,7 +328,17 @@ export async function run(t, { limitDb = Number(process.env.BDB_PARITY_DB ?? -50
       // What the screen's kits and sample folder checks use: an app install with only the TR-808
       // and the Acoustic Kit (other kits download), and a sample folder.
       const appRes = join(hostDir, 'app-resources');
-      cpSync(join(REPO, 'resources', 'kits', 'RolandTR808'), join(appRes, 'kits', 'RolandTR808'), { recursive: true });
+      // (The kits are fetched into resources/kits by `npm run kits`; without them, from GitHub.)
+      if (existsSync(join(REPO, 'resources', 'kits', 'RolandTR808'))) cpSync(join(REPO, 'resources', 'kits', 'RolandTR808'), join(appRes, 'kits', 'RolandTR808'), { recursive: true });
+      else {
+        const catalogue = JSON.parse(readFileSync(join(REPO, 'src', 'main', 'strudel-kits.json'), 'utf8'));
+        for (const path of Object.values(catalogue.kits.RolandTR808).flat()) {
+          const res = await fetch(catalogue.base + path.split('/').map(encodeURIComponent).join('/'));
+          if (!res.ok) throw new Error(`could not fetch ${path}: HTTP ${res.status}`);
+          mkdirSync(join(appRes, 'kits', ...path.split('/'), '..'), { recursive: true });
+          writeFileSync(join(appRes, 'kits', ...path.split('/')), Buffer.from(await res.arrayBuffer()));
+        }
+      }
       cpSync(join(REPO, 'resources', 'acoustic'), join(appRes, 'acoustic'), { recursive: true });
       const sampleDir = join(hostDir, 'My Samples');
       const put = (rel, data) => {
